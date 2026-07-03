@@ -1,6 +1,6 @@
 [package]
 name = "oxc-yaml-parser"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2024"
 authors = []
 description = "A YAML 1.2 parser that produces a comment-preserving typed AST."
