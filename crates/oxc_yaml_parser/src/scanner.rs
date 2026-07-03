@@ -978,6 +978,24 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
+    /// Read and consume a chomping indicator. The cursor must be at `+` or `-`.
+    fn read_chomping(&mut self) -> Chomping {
+        let chomping = if self.peek() == b'+' { Chomping::Keep } else { Chomping::Strip };
+        self.bump();
+        chomping
+    }
+
+    /// Read and consume a block scalar indentation indicator (`1`–`9`). The
+    /// cursor must be at an ASCII digit; `0` is not a valid indicator.
+    fn read_block_indent_indicator(&mut self, start: usize) -> ScanResult<usize> {
+        if self.peek() == b'0' {
+            return Err(self.error(ErrorKind::InvalidBlockScalarHeader, start));
+        }
+        let increment = (self.peek() - b'0') as usize;
+        self.bump();
+        Ok(increment)
+    }
+
     fn scan_block_scalar(&mut self, literal: bool) -> ScanResult<Token> {
         let start = self.pos;
         let mut chomping = Chomping::Clip;
@@ -990,24 +1008,14 @@ impl<'a> Scanner<'a> {
 
         // Parse the header: chomping and indentation indicators, either order.
         if self.peek() == b'+' || self.peek() == b'-' {
-            chomping = if self.peek() == b'+' { Chomping::Keep } else { Chomping::Strip };
-            self.bump();
+            chomping = self.read_chomping();
             if self.peek().is_ascii_digit() {
-                if self.peek() == b'0' {
-                    return Err(self.error(ErrorKind::InvalidBlockScalarHeader, start));
-                }
-                increment = (self.peek() - b'0') as usize;
-                self.bump();
+                increment = self.read_block_indent_indicator(start)?;
             }
         } else if self.peek().is_ascii_digit() {
-            if self.peek() == b'0' {
-                return Err(self.error(ErrorKind::InvalidBlockScalarHeader, start));
-            }
-            increment = (self.peek() - b'0') as usize;
-            self.bump();
+            increment = self.read_block_indent_indicator(start)?;
             if self.peek() == b'+' || self.peek() == b'-' {
-                chomping = if self.peek() == b'+' { Chomping::Keep } else { Chomping::Strip };
-                self.bump();
+                chomping = self.read_chomping();
             }
         }
 
@@ -1512,7 +1520,11 @@ fn span(start: usize, end: usize) -> Span {
 }
 
 /// The number of characters in a byte slice (counting non-continuation bytes).
-#[inline]
+///
+/// Out-of-line on purpose: it is called once per bulk run (not per byte), so a
+/// real call is negligible, while inlining would duplicate its vectorized
+/// `is_ascii` scan into each of `bump_while`'s many instantiations.
+#[inline(never)]
 fn char_count(bytes: &[u8]) -> usize {
     // `is_ascii` is vectorized in std; content runs are overwhelmingly ASCII.
     if bytes.is_ascii() {
