@@ -1,0 +1,5 @@
+[files]
+extend-exclude = [
+  "tasks/conformance/fixtures",
+  "tasks/conformance/snapshots",
+]
