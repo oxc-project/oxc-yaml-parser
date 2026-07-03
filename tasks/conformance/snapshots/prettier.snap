@@ -1,0 +1,9 @@
+suite: prettier
+sha: cf7db3500a89faeb24ad0af45c6b9a0e7b074a03
+files: 361   success: 360   failed: 0   rejected: 1   accepted: 0
+
+failures:
+none
+
+accepted invalid inputs (rejecting invalid YAML is not a goal; tracked for review):
+none

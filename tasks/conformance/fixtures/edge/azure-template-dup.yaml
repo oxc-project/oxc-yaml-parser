@@ -1,0 +1,5 @@
+steps:
+  ${{ if x }}:
+    given: A
+  ${{ else }}:
+    given: B

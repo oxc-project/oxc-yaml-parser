@@ -1,0 +1,5 @@
+base: &b
+  k: 1
+child:
+  <<: *b
+  j: 2

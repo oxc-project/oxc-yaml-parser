@@ -1,0 +1,38 @@
+[package]
+name = "oxc-yaml-parser"
+version = "0.0.0"
+edition = "2024"
+authors = []
+description = "A YAML 1.2 parser that produces a comment-preserving typed AST."
+repository = "https://github.com/oxc-project/oxc-yaml-parser"
+license = "MIT"
+readme = "../../README.md"
+keywords = ["parser", "yaml"]
+categories = ["parser-implementations", "text-processing"]
+exclude = ["/tests"]
+
+[lints]
+workspace = true
+
+[lib]
+doctest = true
+
+[dependencies]
+oxc_allocator = ">=0.137.0"
+
+[dev-dependencies]
+criterion2 = { version = "3", default-features = false }
+insta = { version = "1.47", features = ["glob"] }
+
+[features]
+default = []
+codspeed = ["criterion2/codspeed"]
+
+[[bench]]
+name = "self"
+path = "../../benches/self.rs"
+harness = false
+
+[[example]]
+name = "parse"
+path = "../../examples/parse.rs"

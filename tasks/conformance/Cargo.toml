@@ -1,0 +1,18 @@
+[package]
+name = "conformance"
+version = "0.0.0"
+edition = "2024"
+description = "Conformance suite runner for oxc-yaml-parser."
+repository = "https://github.com/oxc-project/oxc-yaml-parser"
+license = "MIT"
+publish = false
+
+# This is a dev task that prints reports to stdout, so it deliberately does not
+# opt into the workspace's strict `print_stdout`/pedantic lints.
+
+[[bin]]
+name = "conformance"
+path = "src/main.rs"
+
+[dependencies]
+oxc-yaml-parser = { path = "../../crates/oxc_yaml_parser" }

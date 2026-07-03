@@ -1,0 +1,20 @@
+suite: yaml-test-suite
+sha: 6ad3d2c62885d82fc349026c136ef560838fdf3d
+files: 402   success: 308   failed: 0   rejected: 82   accepted: 12
+
+failures:
+none
+
+accepted invalid inputs (rejecting invalid YAML is not a goal; tracked for review):
+ACCEPT   9HCY/in.yaml
+ACCEPT   9MAG/in.yaml
+ACCEPT   CML9/in.yaml
+ACCEPT   CTN5/in.yaml
+ACCEPT   EB22/in.yaml
+ACCEPT   H7TQ/in.yaml
+ACCEPT   MUS6/00/in.yaml
+ACCEPT   MUS6/01/in.yaml
+ACCEPT   QLJ7/in.yaml
+ACCEPT   RHX7/in.yaml
+ACCEPT   SF5V/in.yaml
+ACCEPT   T833/in.yaml

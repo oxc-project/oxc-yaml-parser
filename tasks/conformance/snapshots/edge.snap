@@ -1,0 +1,5 @@
+suite: edge
+files: 18   success: 18   failed: 0   rejected: 0   accepted: 0
+
+failures:
+none
