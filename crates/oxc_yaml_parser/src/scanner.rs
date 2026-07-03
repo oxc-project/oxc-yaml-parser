@@ -226,6 +226,23 @@ fn is_tag_char(b: u8) -> bool {
     is_uri_char(b) && !is_flow(b) && b != b'!'
 }
 
+/// Bytes that may terminate a plain-scalar content run: blanks/breaks/NUL, `:`,
+/// and the flow indicators `,[]{}`. Any other byte is unconditionally plain
+/// content, so the hot scan loop does one load + one table lookup per byte and
+/// only runs the context-sensitive check (and the `:` lookahead) at these
+/// candidates. Every byte >= 0x80 is content, so a multi-byte character is
+/// never split.
+static PLAIN_BOUNDARY: [bool; 256] = {
+    let mut t = [false; 256];
+    let bytes = b" \t\n\r\0:,[]{}";
+    let mut i = 0;
+    while i < bytes.len() {
+        t[bytes[i] as usize] = true;
+        i += 1;
+    }
+    t
+};
+
 const BOM: &[u8] = "\u{FEFF}".as_bytes();
 
 pub struct Scanner<'a> {
@@ -1309,18 +1326,40 @@ impl<'a> Scanner<'a> {
             {
                 self.leading_whitespace = false;
                 // Add content non-blank characters to the scalar, in bulk.
+                // A byte outside `PLAIN_BOUNDARY` is always content, so the
+                // per-byte cost is a single load plus a table lookup; the
+                // context-sensitive check (and the `:` lookahead) runs only at
+                // the rare boundary candidates.
                 let in_flow = self.flow_level > 0;
+                let src = self.src;
+                let len = src.len();
                 let run_start = self.pos;
-                let mut i = self.pos;
-                while let Some(&b) = self.src.get(i) {
-                    let next = self.src.get(i + 1).copied().unwrap_or(0);
-                    if is_blank_or_breakz(b) || ends_plain_scalar(b, next, in_flow) {
-                        break;
+                let mut i = run_start;
+                // OR of every content byte: if it stays ASCII the run has one
+                // column per byte, so we skip `char_count`'s second pass.
+                let mut high = 0u8;
+                while i < len {
+                    let b = src[i];
+                    if PLAIN_BOUNDARY[b as usize] {
+                        if is_blank_or_breakz(b) {
+                            break;
+                        }
+                        if b == b':' {
+                            let next = if i + 1 < len { src[i + 1] } else { 0 };
+                            if is_blank_or_breakz(next) || (in_flow && is_flow(next)) {
+                                break;
+                            }
+                        } else if in_flow {
+                            // A flow indicator (`,[]{}`) ends a scalar only in flow.
+                            break;
+                        }
                     }
+                    high |= b;
                     i += 1;
                 }
                 if i > run_start {
-                    self.col += char_count(&self.src[run_start..i]);
+                    self.col +=
+                        if high < 0x80 { i - run_start } else { char_count(&src[run_start..i]) };
                     self.pos = i;
                 }
                 end = self.pos;
