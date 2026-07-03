@@ -988,26 +988,16 @@ impl<'a> Scanner<'a> {
         self.bump();
         self.unroll_non_block_indents();
 
-        // Parse the header: chomping and indentation indicators, either order.
+        // Parse the header: chomping and indentation indicators, in either order.
         if self.peek() == b'+' || self.peek() == b'-' {
-            chomping = if self.peek() == b'+' { Chomping::Keep } else { Chomping::Strip };
-            self.bump();
+            chomping = self.read_chomping();
             if self.peek().is_ascii_digit() {
-                if self.peek() == b'0' {
-                    return Err(self.error(ErrorKind::InvalidBlockScalarHeader, start));
-                }
-                increment = (self.peek() - b'0') as usize;
-                self.bump();
+                increment = self.read_block_indent(start)?;
             }
         } else if self.peek().is_ascii_digit() {
-            if self.peek() == b'0' {
-                return Err(self.error(ErrorKind::InvalidBlockScalarHeader, start));
-            }
-            increment = (self.peek() - b'0') as usize;
-            self.bump();
+            increment = self.read_block_indent(start)?;
             if self.peek() == b'+' || self.peek() == b'-' {
-                chomping = if self.peek() == b'+' { Chomping::Keep } else { Chomping::Strip };
-                self.bump();
+                chomping = self.read_chomping();
             }
         }
 
@@ -1075,6 +1065,27 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Token::new(TokenKind::Scalar(style, Some(header_index)), span(start, self.pos)))
+    }
+
+    /// Read a block scalar chomping indicator: `+` (keep) or `-` (strip). The
+    /// cursor must be at a `+` or `-`.
+    fn read_chomping(&mut self) -> Chomping {
+        debug_assert!(self.peek() == b'+' || self.peek() == b'-');
+        let chomping = if self.peek() == b'+' { Chomping::Keep } else { Chomping::Strip };
+        self.bump();
+        chomping
+    }
+
+    /// Read a block scalar indentation indicator digit (`1`..=`9`) and return
+    /// it. The cursor must be at an ASCII digit; `0` is not a valid indicator.
+    fn read_block_indent(&mut self, start: usize) -> ScanResult<usize> {
+        debug_assert!(self.peek().is_ascii_digit());
+        if self.peek() == b'0' {
+            return Err(self.error(ErrorKind::InvalidBlockScalarHeader, start));
+        }
+        let increment = (self.peek() - b'0') as usize;
+        self.bump();
+        Ok(increment)
     }
 
     /// Skip the block scalar indentation and empty lines.
