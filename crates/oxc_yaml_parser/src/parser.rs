@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
         // The scanner collected comments directly in the arena; move them out.
         let comments = std::mem::replace(&mut self.scanner.comments, Vec::new_in(&self.allocator));
 
-        Ok(Root { children, comments, span: Span::new(0, source_len) })
+        Ok(Root { span: Span::new(0, source_len), children, comments })
     }
 
     // ---------------------------------------------------------------- tokens
@@ -117,8 +117,8 @@ impl<'a> Parser<'a> {
         }
 
         let head = DocumentHead {
-            directives,
             span: Span::new(head_start, directives_end_marker.map_or(head_end, |s| s.end)),
+            directives,
         };
 
         let content = self.parse_optional_node(false)?;
@@ -127,7 +127,7 @@ impl<'a> Parser<'a> {
             || Span::empty(directives_end_marker.map_or(head_start, |s| s.end)),
             Content::span,
         );
-        let body = DocumentBody { content, span: body_span };
+        let body = DocumentBody { span: body_span, content };
 
         let document_end_marker = self.eat(TokenKind::DocumentEnd)?.map(|t| t.span);
         // Without an explicit `...`, the next document must be introduced by
@@ -148,11 +148,11 @@ impl<'a> Parser<'a> {
         let span_end = document_end_marker.map_or(body.span.end.max(head.span.end), |s| s.end);
 
         Ok(Document {
+            span: Span::new(head_start, span_end),
             head,
             body,
             directives_end_marker,
             document_end_marker,
-            span: Span::new(head_start, span_end),
         })
     }
 
@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
         let mut words = text.trim_start_matches('%').split_ascii_whitespace();
         let name = words.next().unwrap_or("");
         let parameters = Vec::from_iter_in(words, &self.allocator);
-        Directive { name, parameters, span: token.span }
+        Directive { span: token.span, name, parameters }
     }
 
     // ------------------------------------------------------------------ nodes
@@ -200,7 +200,7 @@ impl<'a> Parser<'a> {
                 if props.anchor.is_some() || props.tag.is_some() {
                     return Err(Error::new(ErrorKind::DuplicatedNodeProperty, token.span));
                 }
-                Ok(Content::Alias(self.alloc(Alias { props, span: token.span })))
+                Ok(Content::Alias(self.alloc(Alias { span: token.span, props })))
             }
             TokenKind::Scalar(style, header_index) => {
                 self.next()?;
@@ -223,7 +223,7 @@ impl<'a> Parser<'a> {
                         .map(|a| a.span.end)
                         .max(props.tag.map(|t| t.span.end))
                         .unwrap();
-                    return Ok(Content::Plain(self.alloc(Plain { props, span: Span::empty(at) })));
+                    return Ok(Content::Plain(self.alloc(Plain { span: Span::empty(at), props })));
                 }
                 Err(Error::new(ErrorKind::ExpectedNode, token.span))
             }
@@ -238,22 +238,22 @@ impl<'a> Parser<'a> {
         span: Span,
     ) -> Content<'a> {
         match style {
-            ScalarStyle::Plain => Content::Plain(self.alloc(Plain { props, span })),
+            ScalarStyle::Plain => Content::Plain(self.alloc(Plain { span, props })),
             ScalarStyle::SingleQuoted => {
-                Content::QuoteSingle(self.alloc(QuoteSingle { props, span }))
+                Content::QuoteSingle(self.alloc(QuoteSingle { span, props }))
             }
             ScalarStyle::DoubleQuoted => {
-                Content::QuoteDouble(self.alloc(QuoteDouble { props, span }))
+                Content::QuoteDouble(self.alloc(QuoteDouble { span, props }))
             }
             ScalarStyle::Literal | ScalarStyle::Folded => {
                 let index = header_index.expect("block scalar token must carry a header index");
                 let header = self.scanner.block_headers[index.get()];
                 let node = BlockScalar {
+                    span,
                     props,
                     chomping: header.chomping,
                     indent: header.indent,
                     content_start: header.content_start,
-                    span,
                 };
                 if style == ScalarStyle::Literal {
                     Content::BlockLiteral(self.alloc(node))
@@ -270,7 +270,7 @@ impl<'a> Parser<'a> {
         debug_assert!(entry_token.kind == TokenKind::BlockEntry);
         let content = self.parse_optional_node(false)?;
         let end = content.as_ref().map_or(entry_token.span.end, |c| c.span().end);
-        Ok(SequenceItem { content, span: Span::new(entry_token.span.start, end) })
+        Ok(SequenceItem { span: Span::new(entry_token.span.start, end), content })
     }
 
     fn parse_block_sequence(&mut self, props: Props) -> ParseResult<Content<'a>> {
@@ -292,7 +292,7 @@ impl<'a> Parser<'a> {
         }
 
         let span = container_span(start_token.span, children.first(), children.last());
-        Ok(Content::Sequence(self.alloc(Sequence { props, children, span })))
+        Ok(Content::Sequence(self.alloc(Sequence { span, props, children })))
     }
 
     /// Parse an indentless sequence: `BlockEntry` items with no enclosing
@@ -308,7 +308,7 @@ impl<'a> Parser<'a> {
         }
 
         let span = container_span(Span::empty(first.start), children.first(), children.last());
-        Ok(Content::Sequence(self.alloc(Sequence { props, children, span })))
+        Ok(Content::Sequence(self.alloc(Sequence { span, props, children })))
     }
 
     fn parse_block_mapping(&mut self, props: Props) -> ParseResult<Content<'a>> {
@@ -332,7 +332,7 @@ impl<'a> Parser<'a> {
         }
 
         let span = container_span(start_token.span, children.first(), children.last());
-        Ok(Content::Mapping(self.alloc(Mapping { props, children, span })))
+        Ok(Content::Mapping(self.alloc(Mapping { span, props, children })))
     }
 
     /// Parse one `key: value` pair (block or flow; the token structure is the
@@ -344,25 +344,25 @@ impl<'a> Parser<'a> {
             let explicit = !key_token.synthesized;
             let content = self.parse_optional_node(true)?;
             let span = content.as_ref().map_or(Span::empty(key_token.span.start), Content::span);
-            MappingKey { content, explicit, span }
+            MappingKey { span, content, explicit }
         } else {
             // A `Value` with no preceding `Key` (`: value`).
             let at = self.peek()?.span.start;
-            MappingKey { content: None, explicit: false, span: Span::empty(at) }
+            MappingKey { span: Span::empty(at), content: None, explicit: false }
         };
 
         let value = if let Some(value_token) = self.eat(TokenKind::Value)? {
             let content = self.parse_optional_node(true)?;
             let span = content.as_ref().map_or(Span::empty(value_token.span.end), Content::span);
-            MappingValue { content, span }
+            MappingValue { span, content }
         } else {
             // Key with no value (`key:` is Key+Value; a lone key inside a flow
             // mapping like `{a}` has no Value token).
-            MappingValue { content: None, span: Span::empty(key.span.end) }
+            MappingValue { span: Span::empty(key.span.end), content: None }
         };
 
         let span = Span::new(key.span.start, value.span.end.max(key.span.end));
-        Ok(MappingItem { key, value, span })
+        Ok(MappingItem { span, key, value })
     }
 
     fn parse_flow_sequence(&mut self, props: Props) -> ParseResult<Content<'a>> {
@@ -375,9 +375,9 @@ impl<'a> Parser<'a> {
                     let end_token = self.next()?;
                     let span = Span::new(start_token.span.start, end_token.span.end);
                     return Ok(Content::FlowSequence(self.alloc(FlowSequence {
+                        span,
                         props,
                         children,
-                        span,
                     })));
                 }
                 TokenKind::FlowEntry => {
@@ -409,7 +409,7 @@ impl<'a> Parser<'a> {
                         unreachable!("synthesized FlowMappingStart must produce a FlowMapping");
                     }
                     let span = content.span();
-                    children.push(FlowSequenceEntry::Item(FlowSequenceItem { content, span }));
+                    children.push(FlowSequenceEntry::Item(FlowSequenceItem { span, content }));
                 }
             }
         }
@@ -430,9 +430,9 @@ impl<'a> Parser<'a> {
                         Span::new(start_token.span.start, end_token.span.end)
                     };
                     return Ok(Content::FlowMapping(self.alloc(FlowMapping {
+                        span,
                         props,
                         children,
-                        span,
                     })));
                 }
                 TokenKind::FlowEntry => {
@@ -446,9 +446,9 @@ impl<'a> Parser<'a> {
                     let content = self.parse_node()?;
                     let span = content.span();
                     children.push(MappingItem {
-                        key: MappingKey { content: Some(content), explicit: false, span },
-                        value: MappingValue { content: None, span: Span::empty(span.end) },
                         span,
+                        key: MappingKey { span, content: Some(content), explicit: false },
+                        value: MappingValue { span: Span::empty(span.end), content: None },
                     });
                 }
                 _ => {
