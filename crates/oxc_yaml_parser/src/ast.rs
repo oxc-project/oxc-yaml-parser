@@ -44,44 +44,44 @@ pub struct Props {
 /// The whole stream.
 #[derive(Debug)]
 pub struct Root<'a> {
+    pub span: Span,
     pub children: Vec<'a, Document<'a>>,
     /// Every comment in the stream, in source order. Comments are not
     /// attached to nodes; consumers place them positionally via spans
     /// (the comment-cursor pattern).
     pub comments: Vec<'a, Comment>,
-    pub span: Span,
 }
 
 #[derive(Debug)]
 #[expect(clippy::struct_field_names)] // mirrors yaml-unist-parser's field names
 pub struct Document<'a> {
+    pub span: Span,
     pub head: DocumentHead<'a>,
     pub body: DocumentBody<'a>,
     /// Span of the `---` marker if present.
     pub directives_end_marker: Option<Span>,
     /// Span of the `...` marker if present.
     pub document_end_marker: Option<Span>,
-    pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct DocumentHead<'a> {
-    pub directives: Vec<'a, Directive<'a>>,
     pub span: Span,
+    pub directives: Vec<'a, Directive<'a>>,
 }
 
 #[derive(Debug)]
 pub struct DocumentBody<'a> {
-    pub content: Option<Content<'a>>,
     pub span: Span,
+    pub content: Option<Content<'a>>,
 }
 
 /// `%NAME param param`. Uninterpreted; `%YAML`/`%TAG`/unknown are all accepted.
 #[derive(Debug)]
 pub struct Directive<'a> {
+    pub span: Span,
     pub name: &'a str,
     pub parameters: Vec<'a, &'a str>,
-    pub span: Span,
 }
 
 /// A content node (mirrors yaml-unist-parser's `ContentNode`).
@@ -133,22 +133,22 @@ impl Content<'_> {
 /// (trailing whitespace/comments excluded).
 #[derive(Debug)]
 pub struct Plain {
-    pub props: Props,
     pub span: Span,
+    pub props: Props,
 }
 
 /// `'...'`. `span` includes the quotes.
 #[derive(Debug)]
 pub struct QuoteSingle {
-    pub props: Props,
     pub span: Span,
+    pub props: Props,
 }
 
 /// `"..."`. `span` includes the quotes.
 #[derive(Debug)]
 pub struct QuoteDouble {
-    pub props: Props,
     pub span: Span,
+    pub props: Props,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +168,7 @@ pub enum Chomping {
 /// line breaks consumed while scanning).
 #[derive(Debug)]
 pub struct BlockScalar {
+    pub span: Span,
     pub props: Props,
     pub chomping: Chomping,
     /// Explicit indentation indicator digit, if any.
@@ -175,70 +176,69 @@ pub struct BlockScalar {
     /// Offset right after the header line's line break (= where content
     /// scanning began). The content is `content_start..span.end`.
     pub content_start: u32,
-    pub span: Span,
 }
 
 /// A block mapping.
 #[derive(Debug)]
 pub struct Mapping<'a> {
+    pub span: Span,
     pub props: Props,
     pub children: Vec<'a, MappingItem<'a>>,
-    pub span: Span,
 }
 
 /// One `key: value` pair in a block mapping.
 #[derive(Debug)]
 pub struct MappingItem<'a> {
+    pub span: Span,
     pub key: MappingKey<'a>,
     pub value: MappingValue<'a>,
-    pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct MappingKey<'a> {
+    pub span: Span,
     /// `None` for a value-less key position (`: value` with explicit `?`, or empty).
     pub content: Option<Content<'a>>,
     /// `true` when written with the explicit `?` indicator.
     pub explicit: bool,
-    pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct MappingValue<'a> {
+    pub span: Span,
     /// `None` for `key:` with no value.
     pub content: Option<Content<'a>>,
-    pub span: Span,
 }
 
 /// A block sequence.
 #[derive(Debug)]
 pub struct Sequence<'a> {
+    pub span: Span,
     pub props: Props,
     pub children: Vec<'a, SequenceItem<'a>>,
-    pub span: Span,
 }
 
 /// One `- item` in a block sequence. `span` starts at the `-`.
 #[derive(Debug)]
 pub struct SequenceItem<'a> {
-    pub content: Option<Content<'a>>,
     pub span: Span,
+    pub content: Option<Content<'a>>,
 }
 
 /// `{ ... }`.
 #[derive(Debug)]
 pub struct FlowMapping<'a> {
+    pub span: Span,
     pub props: Props,
     pub children: Vec<'a, MappingItem<'a>>,
-    pub span: Span,
 }
 
 /// `[ ... ]`.
 #[derive(Debug)]
 pub struct FlowSequence<'a> {
+    pub span: Span,
     pub props: Props,
     pub children: Vec<'a, FlowSequenceEntry<'a>>,
-    pub span: Span,
 }
 
 /// An entry in a flow sequence: a plain item, or a `key: value` pair.
@@ -251,13 +251,13 @@ pub enum FlowSequenceEntry<'a> {
 
 #[derive(Debug)]
 pub struct FlowSequenceItem<'a> {
-    pub content: Content<'a>,
     pub span: Span,
+    pub content: Content<'a>,
 }
 
 /// `*name`. `span` covers the `*` and the name.
 #[derive(Debug)]
 pub struct Alias {
-    pub props: Props,
     pub span: Span,
+    pub props: Props,
 }
