@@ -1,6 +1,9 @@
 /// Span represents a range of a piece of source code.
 /// It counts by byte offset, so it's 0-based.
 ///
+/// Adapted from saphyr's `Span` (see the note in `scanner.rs`),
+/// with line/column markers replaced by byte offsets.
+///
 /// Offsets are `u32` (matching oxc convention); sources larger than 4 GiB are
 /// rejected by the parser up front.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]

@@ -37,6 +37,8 @@ All valid inputs in all three corpora parse successfully. Rejecting invalid YAML
 
 MIT
 
+The scanner derives from [libyaml](https://github.com/yaml/libyaml) (MIT) by way of [saphyr](https://github.com/saphyr-rs/saphyr) (MIT); their copyright notices are included in [LICENSE](./LICENSE).
+
 ## ❤ Who's [Sponsoring Oxc](https://github.com/sponsors/Boshen)?
 
 <p align="center">
