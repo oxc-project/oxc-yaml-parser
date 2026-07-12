@@ -14,9 +14,11 @@
 //! states — deliberately mirrors libyaml/saphyr; do not "improve" it without
 //! cross-checking against the yaml-test-suite.
 
-// Indentation comparisons follow libyaml's `isize` convention (-1 = no indent);
-// columns are small, so the casts are safe.
-#![expect(clippy::cast_possible_wrap, clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+// Byte offsets are bounded to u32 by the parser's up-front source-length
+// check, so the `usize -> u32` casts cannot truncate. Indentation comparisons
+// follow libyaml's `isize` convention (-1 = no indent); columns are small, so
+// `cast_signed`/`cast_unsigned` on them are lossless.
+#![expect(clippy::cast_possible_truncation)]
 
 use crate::{
     ast::{Chomping, Comment},
@@ -431,7 +433,7 @@ impl<'a> Scanner<'a> {
                 b'\t'
                     if self.is_within_block()
                         && self.leading_whitespace
-                        && (self.col as isize) < self.indent =>
+                        && self.col.cast_signed() < self.indent =>
                 {
                     self.skip_ws_to_eol(true)?;
                     // If we have content on that line with a tab, error out.
@@ -549,7 +551,7 @@ impl<'a> Scanner<'a> {
         self.skip_to_next_token()?;
         self.stale_simple_keys()?;
 
-        self.unroll_indent(self.col as isize);
+        self.unroll_indent(self.col.cast_signed());
 
         if self.next_is_z() {
             self.fetch_stream_end()?;
@@ -571,7 +573,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        if (self.col as isize) < self.indent {
+        if self.col.cast_signed() < self.indent {
             return Err(self.error(ErrorKind::UnexpectedIndicator, self.pos));
         }
 
@@ -1018,7 +1020,8 @@ impl<'a> Scanner<'a> {
 
         let mut indent: usize = 0;
         if increment > 0 {
-            indent = if self.indent >= 0 { (self.indent as usize) + increment } else { increment };
+            indent =
+                if self.indent >= 0 { self.indent.cast_unsigned() + increment } else { increment };
         }
 
         // Scan the leading line breaks and determine the indentation level if needed.
@@ -1043,7 +1046,7 @@ impl<'a> Scanner<'a> {
             ));
         }
 
-        if self.col < indent && (self.col as isize) > self.indent {
+        if self.col < indent && self.col.cast_signed() > self.indent {
             return Err(self.error(ErrorKind::InvalidBlockScalarIndent, self.pos));
         }
 
@@ -1126,7 +1129,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        *indent = max_indent.max((self.indent + 1) as usize);
+        *indent = max_indent.max((self.indent + 1).cast_unsigned());
         if self.indent > 0 {
             *indent = (*indent).max(1);
         }
@@ -1161,7 +1164,7 @@ impl<'a> Scanner<'a> {
             if self.next_is_z() {
                 return Err(self.error(ErrorKind::UnterminatedFlowScalar, start));
             }
-            if (self.col as isize) < self.indent {
+            if self.col.cast_signed() < self.indent {
                 return Err(self.error(ErrorKind::UnterminatedFlowScalar, start));
             }
 
@@ -1209,7 +1212,7 @@ impl<'a> Scanner<'a> {
                         self.bump_space_run();
                     }
                     b'\t' => {
-                        if self.leading_whitespace && (self.col as isize) < self.indent {
+                        if self.leading_whitespace && self.col.cast_signed() < self.indent {
                             return Err(self.error(ErrorKind::TabAsIndent, self.pos));
                         }
                         self.bump_blank();
@@ -1298,7 +1301,7 @@ impl<'a> Scanner<'a> {
         let indent = self.indent + 1;
         let start = self.pos;
 
-        if self.flow_level > 0 && (self.col as isize) < indent {
+        if self.flow_level > 0 && self.col.cast_signed() < indent {
             return Err(self.error(ErrorKind::UnexpectedIndicator, start));
         }
 
@@ -1350,7 +1353,7 @@ impl<'a> Scanner<'a> {
                     b' ' => {
                         self.bump_space_run();
                     }
-                    b'\t' if self.leading_whitespace && (self.col as isize) < indent => {
+                    b'\t' if self.leading_whitespace && self.col.cast_signed() < indent => {
                         // Tabs in an indentation column are allowed if and
                         // only if the line is empty.
                         self.skip_ws_to_eol(true)?;
@@ -1365,7 +1368,7 @@ impl<'a> Scanner<'a> {
             }
 
             // Check indentation level.
-            if self.flow_level == 0 && (self.col as isize) < indent {
+            if self.flow_level == 0 && self.col.cast_signed() < indent {
                 break;
             }
         }
@@ -1394,15 +1397,15 @@ impl<'a> Scanner<'a> {
         // If the last indent was a non-block indent, remove it. We prepared an
         // indent that we thought we wouldn't use, but realized just now that
         // it is a block indent.
-        if self.indent <= col as isize
+        if self.indent <= col.cast_signed()
             && let Some(indent) = self.indents.pop_if(|indent| !indent.needs_block_end)
         {
             self.indent = indent.indent;
         }
 
-        if self.indent < col as isize {
+        if self.indent < col.cast_signed() {
             self.indents.push(Indent { indent: self.indent, needs_block_end: true });
-            self.indent = col as isize;
+            self.indent = col.cast_signed();
             let tokens_parsed = self.tokens_parsed;
             match number {
                 Some(n) => self.insert_token(n - tokens_parsed, Token::synthesized(kind, at)),
@@ -1446,7 +1449,7 @@ impl<'a> Scanner<'a> {
     fn save_simple_key(&mut self) {
         if self.simple_key_allowed {
             let required = self.flow_level == 0
-                && self.indent == (self.col as isize)
+                && self.indent == self.col.cast_signed()
                 && self.indents.last().is_some_and(|i| i.needs_block_end);
             let sk = SimpleKey {
                 possible: true,
