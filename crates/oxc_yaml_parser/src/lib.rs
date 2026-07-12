@@ -40,7 +40,6 @@ pub use pos::Span;
 #[cfg(all(test, target_pointer_width = "64"))]
 mod size_asserts {
     use crate::{ast, scanner};
-    use std::mem::size_of;
 
     #[test]
     fn sizes() {
