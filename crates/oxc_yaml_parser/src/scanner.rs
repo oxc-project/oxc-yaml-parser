@@ -1395,11 +1395,9 @@ impl<'a> Scanner<'a> {
         // indent that we thought we wouldn't use, but realized just now that
         // it is a block indent.
         if self.indent <= col as isize
-            && let Some(indent) = self.indents.last()
-            && !indent.needs_block_end
+            && let Some(indent) = self.indents.pop_if(|indent| !indent.needs_block_end)
         {
             self.indent = indent.indent;
-            self.indents.pop();
         }
 
         if self.indent < col as isize {
@@ -1437,12 +1435,8 @@ impl<'a> Scanner<'a> {
 
     /// Unroll all indents created with [`Self::roll_one_col_indent`].
     fn unroll_non_block_indents(&mut self) {
-        while let Some(indent) = self.indents.last() {
-            if indent.needs_block_end {
-                break;
-            }
+        while let Some(indent) = self.indents.pop_if(|indent| !indent.needs_block_end) {
             self.indent = indent.indent;
-            self.indents.pop();
         }
     }
 
