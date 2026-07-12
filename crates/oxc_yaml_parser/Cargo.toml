@@ -2,6 +2,7 @@
 name = "oxc-yaml-parser"
 version = "0.0.1"
 edition = "2024"
+rust-version.workspace = true
 authors = []
 description = "A YAML 1.2 parser that produces a comment-preserving typed AST."
 repository = "https://github.com/oxc-project/oxc-yaml-parser"
