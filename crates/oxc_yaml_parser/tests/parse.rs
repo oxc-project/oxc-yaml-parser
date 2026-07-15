@@ -62,6 +62,27 @@ fn block_scalar_header() {
 }
 
 #[test]
+fn block_scalar_span_excludes_next_entry_indent() {
+    // The scan overshoots into the terminating line's indentation; the
+    // token must end just after the scalar's last line break. Trailing
+    // empty lines ARE content, the next entry's partial indent is not.
+    let allocator = Allocator::default();
+    let source = "a:\n  b: |\n    text\n\n  c: d\n";
+    let root = parse(&allocator, source);
+    let Some(Content::Mapping(outer)) = &root.children[0].body.content else {
+        panic!("expected mapping");
+    };
+    let Some(Content::Mapping(inner)) = &outer.children[0].value.content else {
+        panic!("expected nested mapping");
+    };
+    assert_eq!(inner.children.len(), 2);
+    let Some(Content::BlockLiteral(block)) = &inner.children[0].value.content else {
+        panic!("expected block literal");
+    };
+    assert_eq!(&source[block.content_start as usize..block.span.end as usize], "    text\n\n");
+}
+
+#[test]
 fn anchor_tag_and_alias() {
     let allocator = Allocator::default();
     let source = "a: &x !!str hello\nb: *x\n";

@@ -1053,6 +1053,10 @@ impl<'a> Scanner<'a> {
             return Err(self.error(ErrorKind::InvalidBlockScalarIndent, self.pos));
         }
 
+        // The scan may overshoot into the terminating line's indentation; the
+        // token must end just after the last line break that belongs to the
+        // scalar (its trailing breaks ARE content, a partial next indent is not).
+        let mut content_end = self.pos;
         while self.col == indent && !(self.next_is_z()) {
             if indent == 0 && self.next_is_document_indicator() {
                 break;
@@ -1062,15 +1066,19 @@ impl<'a> Scanner<'a> {
             self.bump_while(|b| !is_breakz(b));
 
             if self.next_is_z() {
+                content_end = self.pos;
                 break;
             }
             self.bump_break();
+            content_end = self.pos;
 
             // Eat the following indentation spaces and line breaks.
-            self.skip_block_scalar_indent(indent);
+            if let Some(last_break_end) = self.skip_block_scalar_indent(indent) {
+                content_end = last_break_end;
+            }
         }
 
-        Ok(Token::new(TokenKind::Scalar(style, Some(header_index)), span(start, self.pos)))
+        Ok(Token::new(TokenKind::Scalar(style, Some(header_index)), span(start, content_end)))
     }
 
     /// Read a block scalar chomping indicator: `+` (keep) or `-` (strip). The
@@ -1095,7 +1103,11 @@ impl<'a> Scanner<'a> {
     }
 
     /// Skip the block scalar indentation and empty lines.
-    fn skip_block_scalar_indent(&mut self, indent: usize) {
+    /// Returns the position just after the last consumed line break (i.e. the
+    /// end of the scalar's content if the scan stops here), or `None` if no
+    /// break was consumed.
+    fn skip_block_scalar_indent(&mut self, indent: usize) -> Option<usize> {
+        let mut last_break_end = None;
         loop {
             // Bounded bulk run of indentation spaces.
             while self.col < indent && self.peek() == b' ' {
@@ -1110,10 +1122,12 @@ impl<'a> Scanner<'a> {
             }
             if is_break(self.peek()) {
                 self.bump_break();
+                last_break_end = Some(self.pos);
             } else {
                 break;
             }
         }
+        last_break_end
     }
 
     /// Determine the indentation level for a block scalar from the first line
