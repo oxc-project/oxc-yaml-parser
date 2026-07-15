@@ -751,8 +751,11 @@ impl<'a> Scanner<'a> {
         self.skip_ws_to_eol(true)?;
 
         // A flow collection within a flow mapping can be a key. In that case,
-        // the value may be adjacent to the `:`.
+        // the value may be adjacent to the `:`. Like `fetch_flow_scalar`, the
+        // `:` may also be separated by comments and line breaks
+        // (`{["key"] # c` + newline + `:value}` is still one pair).
         if self.flow_level > 0 {
+            self.skip_to_next_token()?;
             self.adjacent_value_allowed_at = self.pos;
         }
 
