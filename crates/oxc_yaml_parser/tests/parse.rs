@@ -126,6 +126,23 @@ fn indentless_sequence() {
 }
 
 #[test]
+fn no_indentless_sequence_in_sequence_item_position() {
+    // `- !!tag` followed by `- next` is an empty tagged node plus the
+    // parent's next entry, not a nested indentless sequence.
+    let allocator = Allocator::default();
+    let source = "- !!tag\n- next\n";
+    let root = parse(&allocator, source);
+    let Some(Content::Sequence(seq)) = &root.children[0].body.content else {
+        panic!("expected sequence");
+    };
+    assert_eq!(seq.children.len(), 2);
+    let first = seq.children[0].content.as_ref().unwrap();
+    assert!(matches!(first, Content::Plain(_)));
+    assert_eq!(first.props().tag.unwrap().span.slice(source), "!!tag");
+    assert!(first.span().is_empty());
+}
+
+#[test]
 fn flow_pair_in_sequence() {
     let allocator = Allocator::default();
     let source = "[a: b, c]\n";

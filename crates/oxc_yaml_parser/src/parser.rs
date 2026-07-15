@@ -94,7 +94,7 @@ impl<'a> Parser<'a> {
         let kind = self.peek_kind()?;
         let starts =
             if allow_indentless { kind.starts_mapping_entry_node() } else { kind.starts_node() };
-        if starts { Ok(Some(self.parse_node()?)) } else { Ok(None) }
+        if starts { Ok(Some(self.parse_node(allow_indentless)?)) } else { Ok(None) }
     }
 
     // -------------------------------------------------------------- documents
@@ -190,7 +190,11 @@ impl<'a> Parser<'a> {
         Ok(props)
     }
 
-    fn parse_node(&mut self) -> ParseResult<Content<'a>> {
+    /// `allow_indentless`: whether a bare `BlockEntry` after the props starts
+    /// an indentless sequence. Only mapping key/value position allows one
+    /// (YAML `seq-spaces`); in sequence-item position `- !!tag\n- next` is an
+    /// empty tagged node followed by the parent's next entry.
+    fn parse_node(&mut self, allow_indentless: bool) -> ParseResult<Content<'a>> {
         let props = self.parse_props()?;
 
         let token = *self.peek()?;
@@ -212,8 +216,9 @@ impl<'a> Parser<'a> {
             TokenKind::BlockMappingStart => self.parse_block_mapping(props),
             // A `BlockEntry` with no preceding `BlockSequenceStart` is an
             // indentless sequence (a sequence at the same indentation as its
-            // parent mapping key: `key:\n- a`).
-            TokenKind::BlockEntry => self.parse_indentless_sequence(props),
+            // parent mapping key: `key:\n- a`). Outside key/value position it
+            // falls through to the empty-node synthesis below.
+            TokenKind::BlockEntry if allow_indentless => self.parse_indentless_sequence(props),
             _ => {
                 // Properties with no following content (e.g. `!!str : v`):
                 // synthesize an empty plain scalar carrying the properties.
@@ -396,7 +401,7 @@ impl<'a> Parser<'a> {
                         let token = self.peek()?;
                         token.kind == TokenKind::FlowMappingStart && token.synthesized
                     };
-                    let content = self.parse_node()?;
+                    let content = self.parse_node(false)?;
                     if is_synthesized_pair {
                         if let Content::FlowMapping(mapping) = content {
                             let mut mapping = mapping.unbox();
@@ -443,7 +448,7 @@ impl<'a> Parser<'a> {
                 }
                 _ if self.peek_kind()?.starts_node() => {
                     // A lone node in a flow mapping: `{a}` = `{a: null}`.
-                    let content = self.parse_node()?;
+                    let content = self.parse_node(false)?;
                     let span = content.span();
                     children.push(MappingItem {
                         span,
