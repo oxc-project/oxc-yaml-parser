@@ -84,7 +84,25 @@ fn explicit_key() {
     let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
         panic!("expected mapping");
     };
-    assert!(mapping.children[0].key.explicit);
+    let key = &mapping.children[0].key;
+    assert!(key.explicit);
+    // An explicit key's span starts at the `?` indicator
+    // (mirrors yaml-unist-parser's mappingKey range).
+    assert_eq!(key.span.slice(source), "? key");
+}
+
+#[test]
+fn explicit_key_without_content() {
+    let allocator = Allocator::default();
+    let source = "?\n: value\n";
+    let root = parse(&allocator, source);
+    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+        panic!("expected mapping");
+    };
+    let key = &mapping.children[0].key;
+    assert!(key.explicit);
+    assert!(key.content.is_none());
+    assert_eq!(key.span.slice(source), "?");
 }
 
 #[test]

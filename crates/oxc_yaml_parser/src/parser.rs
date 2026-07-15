@@ -348,7 +348,14 @@ impl<'a> Parser<'a> {
             // the scanner's retroactive marker for an implicit `key:`.
             let explicit = !key_token.synthesized;
             let content = self.parse_optional_node(true)?;
-            let span = content.as_ref().map_or(Span::empty(key_token.span.start), Content::span);
+            // An explicit key's span starts at the `?` indicator
+            // (mirrors yaml-unist-parser's mappingKey range).
+            let span = match (&content, explicit) {
+                (Some(content), true) => Span::new(key_token.span.start, content.span().end),
+                (Some(content), false) => content.span(),
+                (None, true) => key_token.span,
+                (None, false) => Span::empty(key_token.span.start),
+            };
             MappingKey { span, content, explicit }
         } else {
             // A `Value` with no preceding `Key` (`: value`).
