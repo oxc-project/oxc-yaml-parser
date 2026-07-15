@@ -174,6 +174,23 @@ fn flow_pair_in_sequence() {
 }
 
 #[test]
+fn flow_collection_key_with_comment_before_value() {
+    // The `:` after a flow collection key may be separated by comments
+    // and line breaks; this is still one pair.
+    let allocator = Allocator::default();
+    let source = "{[\"key\"] # c\n:value}\n";
+    let root = parse(&allocator, source);
+    let Some(Content::FlowMapping(mapping)) = &root.children[0].body.content else {
+        panic!("expected flow mapping");
+    };
+    assert_eq!(mapping.children.len(), 1);
+    let item = &mapping.children[0];
+    assert!(matches!(item.key.content, Some(Content::FlowSequence(_))));
+    assert_eq!(item.value.content.as_ref().unwrap().span().slice(source), "value");
+    assert_eq!(root.comments[0].span.slice(source), "# c");
+}
+
+#[test]
 fn syntax_error_is_fail_fast() {
     let allocator = Allocator::default();
     let error = Parser::new(&allocator, "a:\n\tb: 1\n").parse().unwrap_err();
