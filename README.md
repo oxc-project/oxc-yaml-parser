@@ -39,10 +39,10 @@ MIT
 
 The scanner derives from [libyaml](https://github.com/yaml/libyaml) (MIT) by way of [saphyr](https://github.com/saphyr-rs/saphyr) (MIT); their copyright notices are included in [LICENSE](./LICENSE).
 
-## ❤ Who's [Sponsoring Oxc](https://github.com/sponsors/Boshen)?
+# [Sponsored By](https://oxc.rs/sponsor)
 
 <p align="center">
-  <a href="https://github.com/sponsors/Boshen">
-    <img src="https://raw.githubusercontent.com/Boshen/sponsors/main/sponsors.svg" alt="Our sponsors" />
+  <a href="https://oxc.rs/sponsor">
+    <img src="https://raw.githubusercontent.com/oxc-project/sponsors/main/sponsors.svg" alt="Our sponsors" />
   </a>
 </p>
