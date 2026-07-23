@@ -1,7 +1,17 @@
-use oxc_yaml_parser::{Allocator, Parser, ast::*};
+use oxc_yaml_parser::{Allocator, Parser, Span, ast::*};
 
 fn parse<'a>(allocator: &'a Allocator, source: &'a str) -> Root<'a> {
     Parser::new(allocator, source).parse().unwrap()
+}
+
+/// The first document's body node.
+fn body<'r, 'a>(root: &'r Root<'a>) -> &'r Node<'a> {
+    root.children[0].body.content.as_ref().unwrap()
+}
+
+/// A mapping item's value node.
+fn value_node<'r, 'a>(item: &'r MappingItem<'a>) -> &'r Node<'a> {
+    item.value_content().unwrap()
 }
 
 #[test]
@@ -26,11 +36,11 @@ fn plain_scalar_span_excludes_trailing_whitespace() {
     let allocator = Allocator::default();
     let source = "key: value  \n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let value = mapping.children[0].value.content.as_ref().unwrap();
-    assert_eq!(value.span().slice(source), "value");
+    let value = value_node(&mapping.children[0]);
+    assert_eq!(value.span.slice(source), "value");
 }
 
 #[test]
@@ -38,11 +48,55 @@ fn multiline_plain_scalar_span() {
     let allocator = Allocator::default();
     let source = "key: one\n  two\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let value = mapping.children[0].value.content.as_ref().unwrap();
-    assert_eq!(value.span().slice(source), "one\n  two");
+    let value = value_node(&mapping.children[0]);
+    assert_eq!(value.span.slice(source), "one\n  two");
+}
+
+#[test]
+fn mapping_value_span_starts_at_colon() {
+    let allocator = Allocator::default();
+    let source = "key: value\nempty:\n";
+    let root = parse(&allocator, source);
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let value = mapping.children[0].value.as_ref().unwrap();
+    assert_eq!(value.span.slice(source), ": value");
+    // `key:` with no value: the value node is just the `:`.
+    let empty = mapping.children[1].value.as_ref().unwrap();
+    assert!(empty.content.is_none());
+    assert_eq!(empty.span.slice(source), ":");
+}
+
+#[test]
+fn value_is_absent_without_colon() {
+    // A lone key in a flow mapping has no `:` in the source: no value node.
+    let allocator = Allocator::default();
+    let source = "{a}\n";
+    let root = parse(&allocator, source);
+    let Content::FlowMapping(mapping) = &body(&root).content else {
+        panic!("expected flow mapping");
+    };
+    let item = &mapping.children[0];
+    assert!(item.key.is_some());
+    assert!(item.value.is_none());
+}
+
+#[test]
+fn key_is_absent_without_indicator_or_content() {
+    // `: value` has neither a `?` nor key content: no key node.
+    let allocator = Allocator::default();
+    let source = ": value\n";
+    let root = parse(&allocator, source);
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let item = &mapping.children[0];
+    assert!(item.key.is_none());
+    assert_eq!(item.value.as_ref().unwrap().span.slice(source), ": value");
 }
 
 #[test]
@@ -50,15 +104,16 @@ fn block_scalar_header() {
     let allocator = Allocator::default();
     let source = "key: |2+\n  text\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let Some(Content::BlockLiteral(block)) = &mapping.children[0].value.content else {
+    let Content::BlockLiteral(block) = &value_node(&mapping.children[0]).content else {
         panic!("expected block literal");
     };
     assert_eq!(block.chomping, Chomping::Keep);
     assert_eq!(block.indent, Some(2));
-    assert_eq!(&source[block.content_start as usize..block.span.end as usize], "  text\n");
+    assert_eq!(Span::new(block.content_start, block.span.end).slice(source), "  text\n");
+    assert_eq!(Span::new(block.content_start, block.content_end).slice(source), "  text");
 }
 
 #[test]
@@ -69,17 +124,33 @@ fn block_scalar_span_excludes_next_entry_indent() {
     let allocator = Allocator::default();
     let source = "a:\n  b: |\n    text\n\n  c: d\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(outer)) = &root.children[0].body.content else {
+    let Content::Mapping(outer) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let Some(Content::Mapping(inner)) = &outer.children[0].value.content else {
+    let Content::Mapping(inner) = &value_node(&outer.children[0]).content else {
         panic!("expected nested mapping");
     };
     assert_eq!(inner.children.len(), 2);
-    let Some(Content::BlockLiteral(block)) = &inner.children[0].value.content else {
+    let Content::BlockLiteral(block) = &value_node(&inner.children[0]).content else {
         panic!("expected block literal");
     };
-    assert_eq!(&source[block.content_start as usize..block.span.end as usize], "    text\n\n");
+    assert_eq!(Span::new(block.content_start, block.span.end).slice(source), "    text\n\n");
+    // `content_end` stops right after the last content character.
+    assert_eq!(Span::new(block.content_start, block.content_end).slice(source), "    text");
+}
+
+#[test]
+fn block_scalar_without_content() {
+    let allocator = Allocator::default();
+    let source = "key: |+\n";
+    let root = parse(&allocator, source);
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let Content::BlockLiteral(block) = &value_node(&mapping.children[0]).content else {
+        panic!("expected block literal");
+    };
+    assert_eq!(block.content_start, block.content_end);
 }
 
 #[test]
@@ -87,14 +158,17 @@ fn anchor_tag_and_alias() {
     let allocator = Allocator::default();
     let source = "a: &x !!str hello\nb: *x\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let a = mapping.children[0].value.content.as_ref().unwrap();
-    assert_eq!(a.props().anchor.unwrap().span.slice(source), "&x");
-    assert_eq!(a.props().tag.unwrap().span.slice(source), "!!str");
-    let b = mapping.children[1].value.content.as_ref().unwrap();
-    assert!(matches!(b, Content::Alias(_)));
+    let a = value_node(&mapping.children[0]);
+    assert_eq!(a.props.anchor.unwrap().span.slice(source), "&x");
+    assert_eq!(a.props.tag.unwrap().span.slice(source), "!!str");
+    // The node span covers the props; the content span is the scalar alone.
+    assert_eq!(a.span.slice(source), "&x !!str hello");
+    assert_eq!(a.content.span().slice(source), "hello");
+    let b = value_node(&mapping.children[1]);
+    assert!(matches!(b.content, Content::Alias(_)));
 }
 
 #[test]
@@ -102,13 +176,12 @@ fn explicit_key() {
     let allocator = Allocator::default();
     let source = "? key\n: value\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let key = &mapping.children[0].key;
+    let key = mapping.children[0].key.as_ref().unwrap();
     assert!(key.explicit);
-    // An explicit key's span starts at the `?` indicator
-    // (mirrors yaml-unist-parser's mappingKey range).
+    // An explicit key's span starts at the `?` indicator.
     assert_eq!(key.span.slice(source), "? key");
 }
 
@@ -117,10 +190,10 @@ fn explicit_key_without_content() {
     let allocator = Allocator::default();
     let source = "?\n: value\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let key = &mapping.children[0].key;
+    let key = mapping.children[0].key.as_ref().unwrap();
     assert!(key.explicit);
     assert!(key.content.is_none());
     assert_eq!(key.span.slice(source), "?");
@@ -155,10 +228,10 @@ fn indentless_sequence() {
     let allocator = Allocator::default();
     let source = "key:\n- a\n- b\n";
     let root = parse(&allocator, source);
-    let Some(Content::Mapping(mapping)) = &root.children[0].body.content else {
+    let Content::Mapping(mapping) = &body(&root).content else {
         panic!("expected mapping");
     };
-    let Some(Content::Sequence(seq)) = &mapping.children[0].value.content else {
+    let Content::Sequence(seq) = &value_node(&mapping.children[0]).content else {
         panic!("expected sequence");
     };
     assert_eq!(seq.children.len(), 2);
@@ -171,14 +244,17 @@ fn no_indentless_sequence_in_sequence_item_position() {
     let allocator = Allocator::default();
     let source = "- !!tag\n- next\n";
     let root = parse(&allocator, source);
-    let Some(Content::Sequence(seq)) = &root.children[0].body.content else {
+    let Content::Sequence(seq) = &body(&root).content else {
         panic!("expected sequence");
     };
     assert_eq!(seq.children.len(), 2);
     let first = seq.children[0].content.as_ref().unwrap();
-    assert!(matches!(first, Content::Plain(_)));
-    assert_eq!(first.props().tag.unwrap().span.slice(source), "!!tag");
-    assert!(first.span().is_empty());
+    assert!(matches!(first.content, Content::Plain(_)));
+    assert_eq!(first.props.tag.unwrap().span.slice(source), "!!tag");
+    // The synthesized empty content sits right after the props; the node
+    // span covers the props.
+    assert!(first.content.span().is_empty());
+    assert_eq!(first.span.slice(source), "!!tag");
 }
 
 #[test]
@@ -186,7 +262,7 @@ fn flow_pair_in_sequence() {
     let allocator = Allocator::default();
     let source = "[a: b, c]\n";
     let root = parse(&allocator, source);
-    let Some(Content::FlowSequence(seq)) = &root.children[0].body.content else {
+    let Content::FlowSequence(seq) = &body(&root).content else {
         panic!("expected flow sequence");
     };
     assert_eq!(seq.children.len(), 2);
@@ -201,13 +277,15 @@ fn flow_collection_key_with_comment_before_value() {
     let allocator = Allocator::default();
     let source = "{[\"key\"] # c\n:value}\n";
     let root = parse(&allocator, source);
-    let Some(Content::FlowMapping(mapping)) = &root.children[0].body.content else {
+    let Content::FlowMapping(mapping) = &body(&root).content else {
         panic!("expected flow mapping");
     };
     assert_eq!(mapping.children.len(), 1);
     let item = &mapping.children[0];
-    assert!(matches!(item.key.content, Some(Content::FlowSequence(_))));
-    assert_eq!(item.value.content.as_ref().unwrap().span().slice(source), "value");
+    let key = item.key.as_ref().unwrap().content.as_ref().unwrap();
+    assert!(matches!(key.content, Content::FlowSequence(_)));
+    assert_eq!(value_node(item).span.slice(source), "value");
+    assert_eq!(item.value.as_ref().unwrap().span.slice(source), ":value");
     assert_eq!(root.comments[0].span.slice(source), "# c");
 }
 
@@ -224,11 +302,11 @@ fn s7bg_colon_followed_by_flow_indicator_in_block() {
     let allocator = Allocator::default();
     let source = "---\n- :,\n";
     let root = parse(&allocator, source);
-    let Some(Content::Sequence(seq)) = &root.children[0].body.content else {
+    let Content::Sequence(seq) = &body(&root).content else {
         panic!("expected sequence");
     };
     let item = seq.children[0].content.as_ref().unwrap();
-    assert_eq!(item.span().slice(source), ":,");
+    assert_eq!(item.span.slice(source), ":,");
 }
 
 #[test]

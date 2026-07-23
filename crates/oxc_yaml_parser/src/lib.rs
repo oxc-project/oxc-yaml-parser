@@ -1,10 +1,6 @@
 //! oxc-yaml-parser is a YAML 1.2 parser that produces a comment-preserving,
 //! span-faithful typed AST, designed for building formatters.
 //!
-//! The AST mirrors [yaml-unist-parser](https://github.com/prettier/yaml-unist-parser)'s
-//! node shapes (the AST Prettier's YAML printer consumes). Scalar values are
-//! not cooked: consumers slice the original source through spans.
-//!
 //! ## Basic Usage
 //!
 //! ```rust
@@ -49,8 +45,12 @@ mod size_asserts {
         // AST: `Content` is tag + arena Box, and the niche keeps `Option` free.
         assert_eq!(size_of::<ast::Content>(), 16);
         assert_eq!(size_of::<Option<ast::Content>>(), 16);
-        // Flow sequence entries: the rare pair variant is boxed so plain
-        // items don't pay for it.
-        assert_eq!(size_of::<ast::FlowSequenceEntry>(), 24);
+        // `Node` adds the span and props on top of the content.
+        // Node-position fields box it so container children stay small (guarded below).
+        assert_eq!(size_of::<ast::Node>(), 48);
+        assert_eq!(size_of::<ast::MappingItem>(), 56);
+        assert_eq!(size_of::<ast::SequenceItem>(), 16);
+        // Flow sequence entries: both variants boxed, two words total.
+        assert_eq!(size_of::<ast::FlowSequenceEntry>(), 16);
     }
 }
