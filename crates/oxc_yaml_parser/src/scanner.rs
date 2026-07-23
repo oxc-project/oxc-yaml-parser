@@ -60,6 +60,9 @@ pub struct BlockScalarHeader {
     pub indent: Option<u32>,
     /// Offset right after the header line's line break.
     pub content_start: u32,
+    /// Offset right after the last content character (before the trailing break run).
+    /// Equals `content_start` when the scalar has no content.
+    pub content_end: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1039,6 +1042,9 @@ impl<'a> Scanner<'a> {
             chomping,
             indent: if increment > 0 { Some(increment as u32) } else { None },
             content_start: content_start as u32,
+            // Placeholder for the no-content early return below;
+            // the content loop overwrites it with the real text end.
+            content_end: content_start as u32,
         });
 
         // End-of-stream with no content, e.g. `- |+`.
@@ -1057,6 +1063,9 @@ impl<'a> Scanner<'a> {
         // token must end just after the last line break that belongs to the
         // scalar (its trailing breaks ARE content, a partial next indent is not).
         let mut content_end = self.pos;
+        // Offset right after the last content character
+        // (the loop only enters at lines that carry content, so every iteration advances it).
+        let mut text_end = content_start;
         while self.col == indent && !(self.next_is_z()) {
             if indent == 0 && self.next_is_document_indicator() {
                 break;
@@ -1064,6 +1073,7 @@ impl<'a> Scanner<'a> {
 
             // Consume the content line, in bulk.
             self.bump_while(|b| !is_breakz(b));
+            text_end = self.pos;
 
             if self.next_is_z() {
                 content_end = self.pos;
@@ -1077,6 +1087,7 @@ impl<'a> Scanner<'a> {
                 content_end = last_break_end;
             }
         }
+        self.block_headers[header_index.get()].content_end = text_end as u32;
 
         Ok(Token::new(TokenKind::Scalar(style, Some(header_index)), span(start, content_end)))
     }

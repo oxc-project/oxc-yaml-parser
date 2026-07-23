@@ -87,14 +87,22 @@ impl<'a> Parser<'a> {
         Box::new_in(value, &self.allocator)
     }
 
-    /// Parse a node if the next token can start one, else `None`.
-    /// `allow_indentless` also accepts a bare `BlockEntry` (an indentless
-    /// sequence — only valid in mapping key/value position).
-    fn parse_optional_node(&mut self, allow_indentless: bool) -> ParseResult<Option<Content<'a>>> {
+    /// Parse a node (boxed for a node-position field) if the next token can start one, else `None`.
+    /// `allow_indentless` also accepts a bare `BlockEntry`
+    /// (an indentless sequence — only valid in mapping key/value position).
+    fn parse_optional_node(
+        &mut self,
+        allow_indentless: bool,
+    ) -> ParseResult<Option<Box<'a, Node<'a>>>> {
         let kind = self.peek_kind()?;
         let starts =
             if allow_indentless { kind.starts_mapping_entry_node() } else { kind.starts_node() };
-        if starts { Ok(Some(self.parse_node(allow_indentless)?)) } else { Ok(None) }
+        if starts {
+            let node = self.parse_node(allow_indentless)?;
+            Ok(Some(self.alloc(node)))
+        } else {
+            Ok(None)
+        }
     }
 
     // -------------------------------------------------------------- documents
@@ -125,7 +133,7 @@ impl<'a> Parser<'a> {
 
         let body_span = content.as_ref().map_or_else(
             || Span::empty(directives_end_marker.map_or(head_start, |s| s.end)),
-            Content::span,
+            |node| node.span,
         );
         let body = DocumentBody { span: body_span, content };
 
@@ -190,13 +198,21 @@ impl<'a> Parser<'a> {
         Ok(props)
     }
 
+    /// Parse a full node: properties, then the content they apply to.
+    /// The node span covers both, so child spans always nest inside it.
+    fn parse_node(&mut self, allow_indentless: bool) -> ParseResult<Node<'a>> {
+        let props = self.parse_props()?;
+        let content = self.parse_content(&props, allow_indentless)?;
+        let content_span = content.span();
+        let span = Span::new(props.start().unwrap_or(content_span.start), content_span.end);
+        Ok(Node { span, props, content })
+    }
+
     /// `allow_indentless`: whether a bare `BlockEntry` after the props starts
     /// an indentless sequence. Only mapping key/value position allows one
     /// (YAML `seq-spaces`); in sequence-item position `- !!tag\n- next` is an
     /// empty tagged node followed by the parent's next entry.
-    fn parse_node(&mut self, allow_indentless: bool) -> ParseResult<Content<'a>> {
-        let props = self.parse_props()?;
-
+    fn parse_content(&mut self, props: &Props, allow_indentless: bool) -> ParseResult<Content<'a>> {
         let token = *self.peek()?;
         match token.kind {
             TokenKind::Alias => {
@@ -204,21 +220,21 @@ impl<'a> Parser<'a> {
                 if props.anchor.is_some() || props.tag.is_some() {
                     return Err(Error::new(ErrorKind::DuplicatedNodeProperty, token.span));
                 }
-                Ok(Content::Alias(self.alloc(Alias { span: token.span, props })))
+                Ok(Content::Alias(self.alloc(Alias { span: token.span })))
             }
             TokenKind::Scalar(style, header_index) => {
                 self.next()?;
-                Ok(self.build_scalar(props, style, header_index, token.span))
+                Ok(self.build_scalar(style, header_index, token.span))
             }
-            TokenKind::FlowSequenceStart => self.parse_flow_sequence(props),
-            TokenKind::FlowMappingStart => self.parse_flow_mapping(props),
-            TokenKind::BlockSequenceStart => self.parse_block_sequence(props),
-            TokenKind::BlockMappingStart => self.parse_block_mapping(props),
+            TokenKind::FlowSequenceStart => self.parse_flow_sequence(),
+            TokenKind::FlowMappingStart => self.parse_flow_mapping(),
+            TokenKind::BlockSequenceStart => self.parse_block_sequence(),
+            TokenKind::BlockMappingStart => self.parse_block_mapping(),
             // A `BlockEntry` with no preceding `BlockSequenceStart` is an
             // indentless sequence (a sequence at the same indentation as its
             // parent mapping key: `key:\n- a`). Outside key/value position it
             // falls through to the empty-node synthesis below.
-            TokenKind::BlockEntry if allow_indentless => self.parse_indentless_sequence(props),
+            TokenKind::BlockEntry if allow_indentless => self.parse_indentless_sequence(),
             _ => {
                 // Properties with no following content (e.g. `!!str : v`):
                 // synthesize an empty plain scalar carrying the properties.
@@ -228,7 +244,7 @@ impl<'a> Parser<'a> {
                         .map(|a| a.span.end)
                         .max(props.tag.map(|t| t.span.end))
                         .unwrap();
-                    return Ok(Content::Plain(self.alloc(Plain { span: Span::empty(at), props })));
+                    return Ok(Content::Plain(self.alloc(Plain { span: Span::empty(at) })));
                 }
                 Err(Error::new(ErrorKind::ExpectedNode, token.span))
             }
@@ -237,28 +253,23 @@ impl<'a> Parser<'a> {
 
     fn build_scalar(
         &self,
-        props: Props,
         style: ScalarStyle,
         header_index: Option<crate::scanner::BlockHeaderIndex>,
         span: Span,
     ) -> Content<'a> {
         match style {
-            ScalarStyle::Plain => Content::Plain(self.alloc(Plain { span, props })),
-            ScalarStyle::SingleQuoted => {
-                Content::QuoteSingle(self.alloc(QuoteSingle { span, props }))
-            }
-            ScalarStyle::DoubleQuoted => {
-                Content::QuoteDouble(self.alloc(QuoteDouble { span, props }))
-            }
+            ScalarStyle::Plain => Content::Plain(self.alloc(Plain { span })),
+            ScalarStyle::SingleQuoted => Content::QuoteSingle(self.alloc(QuoteSingle { span })),
+            ScalarStyle::DoubleQuoted => Content::QuoteDouble(self.alloc(QuoteDouble { span })),
             ScalarStyle::Literal | ScalarStyle::Folded => {
                 let index = header_index.expect("block scalar token must carry a header index");
                 let header = self.scanner.block_headers[index.get()];
                 let node = BlockScalar {
                     span,
-                    props,
                     chomping: header.chomping,
                     indent: header.indent,
                     content_start: header.content_start,
+                    content_end: header.content_end,
                 };
                 if style == ScalarStyle::Literal {
                     Content::BlockLiteral(self.alloc(node))
@@ -274,11 +285,11 @@ impl<'a> Parser<'a> {
         let entry_token = self.next()?;
         debug_assert!(entry_token.kind == TokenKind::BlockEntry);
         let content = self.parse_optional_node(false)?;
-        let end = content.as_ref().map_or(entry_token.span.end, |c| c.span().end);
+        let end = content.as_ref().map_or(entry_token.span.end, |n| n.span.end);
         Ok(SequenceItem { span: Span::new(entry_token.span.start, end), content })
     }
 
-    fn parse_block_sequence(&mut self, props: Props) -> ParseResult<Content<'a>> {
+    fn parse_block_sequence(&mut self) -> ParseResult<Content<'a>> {
         let start_token = self.next()?; // BlockSequenceStart
         let mut children = Vec::new_in(&self.allocator);
 
@@ -297,14 +308,14 @@ impl<'a> Parser<'a> {
         }
 
         let span = container_span(start_token.span, children.first(), children.last());
-        Ok(Content::Sequence(self.alloc(Sequence { span, props, children })))
+        Ok(Content::Sequence(self.alloc(Sequence { span, children })))
     }
 
     /// Parse an indentless sequence: `BlockEntry` items with no enclosing
     /// `BlockSequenceStart`/`BlockEnd` (the scanner does not roll an indent
     /// for a sequence at the same indentation as its parent mapping key).
     /// Terminates at the first token that is not a `BlockEntry`.
-    fn parse_indentless_sequence(&mut self, props: Props) -> ParseResult<Content<'a>> {
+    fn parse_indentless_sequence(&mut self) -> ParseResult<Content<'a>> {
         let mut children = Vec::new_in(&self.allocator);
         let first = self.peek()?.span;
 
@@ -313,10 +324,10 @@ impl<'a> Parser<'a> {
         }
 
         let span = container_span(Span::empty(first.start), children.first(), children.last());
-        Ok(Content::Sequence(self.alloc(Sequence { span, props, children })))
+        Ok(Content::Sequence(self.alloc(Sequence { span, children })))
     }
 
-    fn parse_block_mapping(&mut self, props: Props) -> ParseResult<Content<'a>> {
+    fn parse_block_mapping(&mut self) -> ParseResult<Content<'a>> {
         let start_token = self.next()?; // BlockMappingStart
         let mut children = Vec::new_in(&self.allocator);
 
@@ -337,47 +348,62 @@ impl<'a> Parser<'a> {
         }
 
         let span = container_span(start_token.span, children.first(), children.last());
-        Ok(Content::Mapping(self.alloc(Mapping { span, props, children })))
+        Ok(Content::Mapping(self.alloc(Mapping { span, children })))
     }
 
     /// Parse one `key: value` pair (block or flow; the token structure is the
     /// same). The cursor must be at a `Key` or `Value` token.
     fn parse_mapping_item(&mut self) -> ParseResult<MappingItem<'a>> {
-        let key = if let Some(key_token) = self.eat(TokenKind::Key)? {
-            // A real `Key` token is always a literal `?`; a synthesized one is
-            // the scanner's retroactive marker for an implicit `key:`.
+        // A real `Key` token is always a literal `?`; a synthesized one is
+        // the scanner's retroactive marker for an implicit `key:`.
+        let key_token = self.eat(TokenKind::Key)?;
+        let key = if let Some(key_token) = key_token {
             let explicit = !key_token.synthesized;
             let content = self.parse_optional_node(true)?;
-            // An explicit key's span starts at the `?` indicator
-            // (mirrors yaml-unist-parser's mappingKey range).
-            let span = match (&content, explicit) {
-                (Some(content), true) => Span::new(key_token.span.start, content.span().end),
-                (Some(content), false) => content.span(),
-                (None, true) => key_token.span,
-                (None, false) => Span::empty(key_token.span.start),
-            };
-            MappingKey { span, content, explicit }
+            match content {
+                Some(node) => {
+                    // An explicit key's span starts at the `?` indicator.
+                    let start = if explicit { key_token.span.start } else { node.span.start };
+                    let span = Span::new(start, node.span.end);
+                    Some(MappingKey { span, content: Some(node), explicit })
+                }
+                None if explicit => {
+                    Some(MappingKey { span: key_token.span, content: None, explicit })
+                }
+                // A synthesized marker with no content leaves no trace in the
+                // source: no key.
+                None => None,
+            }
         } else {
-            // A `Value` with no preceding `Key` (`: value`).
-            let at = self.peek()?.span.start;
-            MappingKey { span: Span::empty(at), content: None, explicit: false }
+            None
         };
 
+        // The `Value` token is always the literal `:`; the value span starts there.
         let value = if let Some(value_token) = self.eat(TokenKind::Value)? {
             let content = self.parse_optional_node(true)?;
-            let span = content.as_ref().map_or(Span::empty(value_token.span.end), Content::span);
-            MappingValue { span, content }
+            let end = content.as_ref().map_or(value_token.span.end, |n| n.span.end);
+            Some(MappingValue { span: Span::new(value_token.span.start, end), content })
         } else {
-            // Key with no value (`key:` is Key+Value; a lone key inside a flow
-            // mapping like `{a}` has no Value token).
-            MappingValue { span: Span::empty(key.span.end), content: None }
+            None
         };
 
-        let span = Span::new(key.span.start, value.span.end.max(key.span.end));
-        Ok(MappingItem { span, key, value })
+        // Entered at a `Key`/`Value` token, so a key, a value,
+        // or at least a consumed key token (the degenerate all-empty case) exists.
+        let start = key
+            .as_ref()
+            .map(|k| k.span.start)
+            .or_else(|| value.as_ref().map(|v| v.span.start))
+            .or_else(|| key_token.map(|t| t.span.start))
+            .expect("parse_mapping_item is entered at a Key or Value token");
+        let end = value
+            .as_ref()
+            .map(|v| v.span.end)
+            .max(key.as_ref().map(|k| k.span.end))
+            .unwrap_or(start);
+        Ok(MappingItem { span: Span::new(start, end), key, value })
     }
 
-    fn parse_flow_sequence(&mut self, props: Props) -> ParseResult<Content<'a>> {
+    fn parse_flow_sequence(&mut self) -> ParseResult<Content<'a>> {
         let start_token = self.next()?; // FlowSequenceStart
         let mut children = Vec::new_in(&self.allocator);
 
@@ -386,11 +412,7 @@ impl<'a> Parser<'a> {
                 TokenKind::FlowSequenceEnd => {
                     let end_token = self.next()?;
                     let span = Span::new(start_token.span.start, end_token.span.end);
-                    return Ok(Content::FlowSequence(self.alloc(FlowSequence {
-                        span,
-                        props,
-                        children,
-                    })));
+                    return Ok(Content::FlowSequence(self.alloc(FlowSequence { span, children })));
                 }
                 TokenKind::FlowEntry => {
                     self.next()?;
@@ -408,9 +430,9 @@ impl<'a> Parser<'a> {
                         let token = self.peek()?;
                         token.kind == TokenKind::FlowMappingStart && token.synthesized
                     };
-                    let content = self.parse_node(false)?;
+                    let node = self.parse_node(false)?;
                     if is_synthesized_pair {
-                        if let Content::FlowMapping(mapping) = content {
+                        if let Content::FlowMapping(mapping) = node.content {
                             let mut mapping = mapping.unbox();
                             debug_assert!(mapping.children.len() == 1);
                             if let Some(item) = mapping.children.pop() {
@@ -420,14 +442,13 @@ impl<'a> Parser<'a> {
                         }
                         unreachable!("synthesized FlowMappingStart must produce a FlowMapping");
                     }
-                    let span = content.span();
-                    children.push(FlowSequenceEntry::Item(FlowSequenceItem { span, content }));
+                    children.push(FlowSequenceEntry::Item(self.alloc(node)));
                 }
             }
         }
     }
 
-    fn parse_flow_mapping(&mut self, props: Props) -> ParseResult<Content<'a>> {
+    fn parse_flow_mapping(&mut self) -> ParseResult<Content<'a>> {
         let start_token = self.next()?; // FlowMappingStart
         let mut children = Vec::new_in(&self.allocator);
 
@@ -441,11 +462,7 @@ impl<'a> Parser<'a> {
                     } else {
                         Span::new(start_token.span.start, end_token.span.end)
                     };
-                    return Ok(Content::FlowMapping(self.alloc(FlowMapping {
-                        span,
-                        props,
-                        children,
-                    })));
+                    return Ok(Content::FlowMapping(self.alloc(FlowMapping { span, children })));
                 }
                 TokenKind::FlowEntry => {
                     self.next()?;
@@ -455,12 +472,16 @@ impl<'a> Parser<'a> {
                 }
                 _ if self.peek_kind()?.starts_node() => {
                     // A lone node in a flow mapping: `{a}` = `{a: null}`.
-                    let content = self.parse_node(false)?;
-                    let span = content.span();
+                    let node = self.parse_node(false)?;
+                    let span = node.span;
                     children.push(MappingItem {
                         span,
-                        key: MappingKey { span, content: Some(content), explicit: false },
-                        value: MappingValue { span: Span::empty(span.end), content: None },
+                        key: Some(MappingKey {
+                            span,
+                            content: Some(self.alloc(node)),
+                            explicit: false,
+                        }),
+                        value: None,
                     });
                 }
                 _ => {
