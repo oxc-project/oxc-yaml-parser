@@ -24,6 +24,10 @@ use oxc_allocator::{Box, Vec};
 #[derive(Clone, Copy, Debug)]
 pub struct Comment {
     pub span: Span,
+    /// The 0-based column of the `#` when only whitespace precedes it on its
+    /// line (an "own-line" comment); `None` when it trails other content.
+    /// Columns count characters; a tab counts as one.
+    pub own_line_column: Option<u32>,
 }
 
 /// `&name`. `span` covers the `&` and the name.
@@ -65,6 +69,7 @@ pub struct Root<'a> {
     /// Every comment in the stream, in source order. Comments are not
     /// attached to nodes; consumers place them positionally via spans
     /// (the comment-cursor pattern).
+    /// No comment lies inside a block scalar's content range (see the guarantee on [`BlockScalar`]).
     pub comments: Vec<'a, Comment>,
 }
 
@@ -182,6 +187,14 @@ pub enum Chomping {
 /// covers the indicator through the end of the content (including trailing
 /// line breaks consumed while scanning — they are the token's lexical extent,
 /// and under keep chomping part of the value).
+///
+/// GUARANTEE: [`Root::comments`] never holds a comment inside `content_start..span.end`.
+/// `#` line indented to the content is VALUE,
+/// and a lesser-indented one terminates the scalar first.
+/// The only comment within `span` is the header line's trailing one (`| # ...`),
+/// which always ends before `content_start`.
+/// Asserted at the end of the scanner's block-scalar scan (`debug_assert`),
+/// so every parse exercises it.
 #[derive(Debug)]
 pub struct BlockScalar {
     pub span: Span,

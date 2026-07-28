@@ -420,10 +420,13 @@ impl<'a> Scanner<'a> {
     /// Record a `#` comment (cursor must be at the `#`) as trivia and consume
     /// it up to (excluding) the line break.
     fn eat_comment(&mut self) {
-        debug_assert!(self.peek() == b'#');
+        debug_assert_eq!(self.peek(), b'#');
         let start = self.pos;
+        // Captured before the bump clears them: `col` is the `#`'s column and
+        // `leading_whitespace` says whether only whitespace precedes it.
+        let own_line_column = self.leading_whitespace.then_some(self.col as u32);
         self.bump_while(|b| !is_breakz(b));
-        self.comments.push(Comment { span: span(start, self.pos) });
+        self.comments.push(Comment { span: span(start, self.pos), own_line_column });
     }
 
     /// Skip over whitespace, comments and line breaks until the next token.
@@ -1088,6 +1091,14 @@ impl<'a> Scanner<'a> {
             }
         }
         self.block_headers[header_index.get()].content_end = text_end as u32;
+
+        // The guarantee documented on `BlockScalar`:
+        // the content scan never collects a comment
+        // (comments are appended in source order, so checking the last one suffices).
+        debug_assert!(
+            self.comments.last().is_none_or(|c| c.span.end <= content_start as u32),
+            "no comment may lie inside a block scalar's content range"
+        );
 
         Ok(Token::new(TokenKind::Scalar(style, Some(header_index)), span(start, content_end)))
     }

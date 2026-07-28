@@ -32,6 +32,17 @@ fn comments_are_collected_with_spans() {
 }
 
 #[test]
+fn comments_carry_own_line_column() {
+    let allocator = Allocator::default();
+    let source = "# top\nkey: value # trailing\nmap:\n  a: 1\n  # indented\n\t# after tab\n";
+    let root = parse(&allocator, source);
+    let columns: Vec<Option<u32>> = root.comments.iter().map(|c| c.own_line_column).collect();
+    // Own-line comments report the `#` column (a tab counts as one);
+    // a comment trailing other content reports `None`.
+    assert_eq!(columns, [Some(0), None, Some(2), Some(1)]);
+}
+
+#[test]
 fn plain_scalar_span_excludes_trailing_whitespace() {
     let allocator = Allocator::default();
     let source = "key: value  \n";
@@ -137,6 +148,39 @@ fn block_scalar_span_excludes_next_entry_indent() {
     assert_eq!(Span::new(block.content_start, block.span.end).slice(source), "    text\n\n");
     // `content_end` stops right after the last content character.
     assert_eq!(Span::new(block.content_start, block.content_end).slice(source), "    text");
+}
+
+#[test]
+fn block_scalar_content_range_holds_no_comments() {
+    // The GUARANTEE documented on `BlockScalar`:
+    // a `#` line indented to the content is value,
+    // a lesser-indented one ends the scalar first,
+    // and the trailing break run holds only breaks.
+    // So the sole comment within `span` is the header line's trailing one,
+    // ending before `content_start`.
+    let allocator = Allocator::default();
+    let source =
+        "key: | # header\n  # value not comment\n\n# after\nnext: |+\n  text\n\n\nlast: 1\n";
+    let root = parse(&allocator, source);
+
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let texts: Vec<&str> = root.comments.iter().map(|c| c.span.slice(source)).collect();
+    assert_eq!(texts, ["# header", "# after"]);
+    for item in &mapping.children {
+        let Some(node) = item.value_content() else { continue };
+        let (Content::BlockLiteral(block) | Content::BlockFolded(block)) = &node.content else {
+            continue;
+        };
+        for comment in &root.comments {
+            assert!(
+                comment.span.end <= block.content_start || comment.span.start >= block.span.end,
+                "comment {:?} overlaps block scalar content range",
+                comment.span.slice(source),
+            );
+        }
+    }
 }
 
 #[test]

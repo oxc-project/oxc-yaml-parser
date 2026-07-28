@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
         let source_len = self.source.len() as u32;
 
         let first = self.next()?;
-        debug_assert!(first.kind == TokenKind::StreamStart);
+        debug_assert_eq!(first.kind, TokenKind::StreamStart);
 
         let mut children = Vec::new_in(&self.allocator);
         loop {
@@ -283,7 +283,7 @@ impl<'a> Parser<'a> {
     /// Parse one `- item`. The cursor must be at a `BlockEntry` token.
     fn parse_sequence_item(&mut self) -> ParseResult<SequenceItem<'a>> {
         let entry_token = self.next()?;
-        debug_assert!(entry_token.kind == TokenKind::BlockEntry);
+        debug_assert_eq!(entry_token.kind, TokenKind::BlockEntry);
         let content = self.parse_optional_node(false)?;
         let end = content.as_ref().map_or(entry_token.span.end, |n| n.span.end);
         Ok(SequenceItem { span: Span::new(entry_token.span.start, end), content })
@@ -434,7 +434,7 @@ impl<'a> Parser<'a> {
                     if is_synthesized_pair {
                         if let Content::FlowMapping(mapping) = node.content {
                             let mut mapping = mapping.unbox();
-                            debug_assert!(mapping.children.len() == 1);
+                            debug_assert_eq!(mapping.children.len(), 1);
                             if let Some(item) = mapping.children.pop() {
                                 children.push(FlowSequenceEntry::Pair(self.alloc(item)));
                             }
