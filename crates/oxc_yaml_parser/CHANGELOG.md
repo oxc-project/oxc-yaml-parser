@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.3...oxc-yaml-parser-v0.0.4) - 2026-07-28
+
+### Added
+
+- add `Comment.own_line_column` field ([#25](https://github.com/oxc-project/oxc-yaml-parser/pull/25))
+
 ## [0.0.3](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.2...oxc-yaml-parser-v0.0.3) - 2026-07-23
 
 ### Added
