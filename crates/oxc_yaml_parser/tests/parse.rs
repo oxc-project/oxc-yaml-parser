@@ -151,6 +151,45 @@ fn block_scalar_span_excludes_next_entry_indent() {
 }
 
 #[test]
+fn contentless_block_scalar_span_excludes_next_entry_indent() {
+    // Same rule with no content line at all:
+    // the leading blank-line skip overshoots into the next entry's indentation, the span must not.
+    let allocator = Allocator::default();
+    let source = "example:\n  - |+\n\n  - .\n";
+    let root = parse(&allocator, source);
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let Content::Sequence(sequence) = &value_node(&mapping.children[0]).content else {
+        panic!("expected sequence");
+    };
+    let Content::BlockLiteral(block) = &sequence.children[0].content.as_ref().unwrap().content
+    else {
+        panic!("expected block literal");
+    };
+    assert_eq!(Span::new(block.content_start, block.span.end).slice(source), "\n");
+    assert_eq!(block.content_start, block.content_end);
+}
+
+#[test]
+fn contentless_block_scalar_span_keeps_eos_trailing_spaces() {
+    // At end of stream the rule intentionally differs: trailing spaces stay in the span,
+    // because a space-only last line still materializes the preceding break as value
+    // (`key: |+\n  ` reads as "\n" in yaml@2).
+    let allocator = Allocator::default();
+    let source = "key: |+\n\n  ";
+    let root = parse(&allocator, source);
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let Content::BlockLiteral(block) = &value_node(&mapping.children[0]).content else {
+        panic!("expected block literal");
+    };
+    assert_eq!(Span::new(block.content_start, block.span.end).slice(source), "\n  ");
+    assert_eq!(block.content_start, block.content_end);
+}
+
+#[test]
 fn block_scalar_content_range_holds_no_comments() {
     // The GUARANTEE documented on `BlockScalar`:
     // a `#` line indented to the content is value,
