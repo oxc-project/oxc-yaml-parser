@@ -173,9 +173,8 @@ fn contentless_block_scalar_span_excludes_next_entry_indent() {
 
 #[test]
 fn contentless_block_scalar_span_keeps_eos_trailing_spaces() {
-    // At end of stream the rule intentionally differs: trailing spaces stay in the span,
-    // because a space-only last line still materializes the preceding break as value
-    // (`key: |+\n  ` reads as "\n" in yaml@2).
+    // Unlike mid-stream (span ends at the scalar's last line break, above),
+    // trailing spaces at end of stream stay in the span (see the scanner's end-of-stream return for why).
     let allocator = Allocator::default();
     let source = "key: |+\n\n  ";
     let root = parse(&allocator, source);
