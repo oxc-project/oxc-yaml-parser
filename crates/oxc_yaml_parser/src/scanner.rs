@@ -1034,11 +1034,11 @@ impl<'a> Scanner<'a> {
         }
 
         // Scan the leading line breaks and determine the indentation level if needed.
-        if indent == 0 {
-            self.skip_block_scalar_first_line_indent(&mut indent);
+        let leading_break_end = if indent == 0 {
+            self.skip_block_scalar_first_line_indent(&mut indent)
         } else {
-            self.skip_block_scalar_indent(indent);
-        }
+            self.skip_block_scalar_indent(indent)
+        };
 
         let header_index = BlockHeaderIndex::new(self.block_headers.len());
         self.block_headers.push(BlockScalarHeader {
@@ -1051,6 +1051,9 @@ impl<'a> Scanner<'a> {
         });
 
         // End-of-stream with no content, e.g. `- |+`.
+        // The span keeps any trailing spaces:
+        // a space-only last line still materializes the preceding break as value
+        // (`key: |+\n  ` reads as "\n" in yaml@2).
         if self.next_is_z() {
             return Ok(Token::new(
                 TokenKind::Scalar(style, Some(header_index)),
@@ -1065,7 +1068,8 @@ impl<'a> Scanner<'a> {
         // The scan may overshoot into the terminating line's indentation; the
         // token must end just after the last line break that belongs to the
         // scalar (its trailing breaks ARE content, a partial next indent is not).
-        let mut content_end = self.pos;
+        // With no content line at all, that is the leading skip's last break.
+        let mut content_end = leading_break_end.unwrap_or(content_start);
         // Offset right after the last content character
         // (the loop only enters at lines that carry content, so every iteration advances it).
         let mut text_end = content_start;
@@ -1154,8 +1158,10 @@ impl<'a> Scanner<'a> {
 
     /// Determine the indentation level for a block scalar from the first line
     /// of its contents.
-    fn skip_block_scalar_first_line_indent(&mut self, indent: &mut usize) {
+    /// Returns the last consumed break's end, as [`Self::skip_block_scalar_indent`].
+    fn skip_block_scalar_first_line_indent(&mut self, indent: &mut usize) -> Option<usize> {
         let mut max_indent = 0;
+        let mut last_break_end = None;
         loop {
             self.bump_space_run();
             if self.col > max_indent {
@@ -1163,6 +1169,7 @@ impl<'a> Scanner<'a> {
             }
             if is_break(self.peek()) {
                 self.bump_break();
+                last_break_end = Some(self.pos);
             } else {
                 break;
             }
@@ -1172,6 +1179,7 @@ impl<'a> Scanner<'a> {
         if self.indent > 0 {
             *indent = (*indent).max(1);
         }
+        last_break_end
     }
 
     fn fetch_flow_scalar(&mut self, single: bool) -> ScanResult {
