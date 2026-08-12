@@ -1052,8 +1052,9 @@ impl<'a> Scanner<'a> {
 
         // End-of-stream with no content, e.g. `- |+`.
         // The span keeps any trailing spaces:
-        // a space-only last line still materializes the preceding break as value
-        // (`key: |+\n  ` reads as "\n" in yaml@2).
+        // with no next token to own them they are part of the token's lexical extent,
+        // and consumers decide what a break-less space-only last line means for the value
+        // (implementations disagree: "" per the `libyaml` family, "\n" per `yaml@2`).
         if self.next_is_z() {
             return Ok(Token::new(
                 TokenKind::Scalar(style, Some(header_index)),
