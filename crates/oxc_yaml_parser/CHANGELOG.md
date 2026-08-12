@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.4...oxc-yaml-parser-v0.0.5) - 2026-08-12
+
+### Fixed
+
+- *(scanner)* exclude next entry indent from contentless block scalar span ([#27](https://github.com/oxc-project/oxc-yaml-parser/pull/27))
+
 ## [0.0.4](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.3...oxc-yaml-parser-v0.0.4) - 2026-07-28
 
 ### Added
