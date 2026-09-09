@@ -409,6 +409,22 @@ fn directive_with_glued_hash() {
 }
 
 #[test]
+fn root_block_scalar_with_indent_indicator_ends_at_column_zero() {
+    // Column 0 after a contentless root scalar with an indentation indicator ends the scalar.
+    let allocator = Allocator::default();
+    let root = parse(&allocator, "--- |1-\n--- |1\n a\n");
+    assert_eq!(root.children.len(), 2);
+
+    let root = parse(&allocator, "--- |1-\n# c\n");
+    assert_eq!(root.children.len(), 1);
+    assert_eq!(root.comments.len(), 1);
+
+    // A line indented between the parent and the scalar is still rejected.
+    assert!(Parser::new(&allocator, "--- |2\n x\n").parse().is_err());
+    assert!(Parser::new(&allocator, "k:\n  v: |2\n   x\n y\n").parse().is_err());
+}
+
+#[test]
 fn double_quoted_surrogate_escapes_are_accepted() {
     // yaml@2 and PyYAML accept surrogate pairs and lone surrogates; libyaml rejects both.
     let allocator = Allocator::default();
