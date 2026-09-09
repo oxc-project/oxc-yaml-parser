@@ -1325,7 +1325,9 @@ impl<'a> Scanner<'a> {
                 };
                 value = (value << 4) + u32::from(digit);
             }
-            if char::from_u32(value).is_none() {
+            // Surrogates pass, as in yaml@2 and PyYAML (JSON spells astral characters as pairs).
+            // Values are not cooked, so only the range is checked.
+            if value > char::MAX as u32 {
                 return Err(self.error(ErrorKind::InvalidChar, start));
             }
             // Hex digits are ASCII; advance in one step.
