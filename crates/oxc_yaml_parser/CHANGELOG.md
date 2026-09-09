@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.6](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.5...oxc-yaml-parser-v0.0.6) - 2026-09-09
+
+### Fixed
+
+- *(scanner)* end a contentless root block scalar ([#34](https://github.com/oxc-project/oxc-yaml-parser/pull/34))
+- *(scanner)* accept surrogate escapes in double quoted scalar ([#33](https://github.com/oxc-project/oxc-yaml-parser/pull/33))
+
+### Other
+
+- *(scanner)* update EOS handling comments ([#29](https://github.com/oxc-project/oxc-yaml-parser/pull/29))
+
 ## [0.0.5](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.4...oxc-yaml-parser-v0.0.5) - 2026-08-12
 
 ### Fixed
