@@ -407,3 +407,14 @@ fn directive_with_glued_hash() {
     assert_eq!(root.children[0].head.directives[0].parameters.as_slice(), ["bar#baz"]);
     assert_eq!(root.comments.len(), 1);
 }
+
+#[test]
+fn double_quoted_surrogate_escapes_are_accepted() {
+    // yaml@2 and PyYAML accept surrogate pairs and lone surrogates; libyaml rejects both.
+    let allocator = Allocator::default();
+    for source in [r#""\uD834\uDD1E""#, r#""\uD800""#, r#""\U0001D11E""#] {
+        assert!(Parser::new(&allocator, source).parse().is_ok(), "{source}");
+    }
+    // Beyond the Unicode range is still invalid.
+    assert!(Parser::new(&allocator, r#""\U00110000""#).parse().is_err());
+}
