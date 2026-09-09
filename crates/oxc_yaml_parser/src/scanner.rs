@@ -1062,7 +1062,9 @@ impl<'a> Scanner<'a> {
             ));
         }
 
-        if self.col < indent && self.col.cast_signed() > self.indent {
+        // A first line indented less than the scalar but more than its parent is misindented content.
+        // Column 0 at the root (parent indent -1) is not: it ends the scalar (`---`, a comment).
+        if self.col < indent && self.col.cast_signed() > self.indent.max(0) {
             return Err(self.error(ErrorKind::InvalidBlockScalarIndent, self.pos));
         }
 
