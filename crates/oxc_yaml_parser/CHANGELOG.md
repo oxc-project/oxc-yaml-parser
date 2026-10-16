@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.7](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.6...oxc-yaml-parser-v0.0.7) - 2026-10-16
+
+### Fixed
+
+- *(scanner)* align NUL, BOM and document marker handling with yaml@2 ([#41](https://github.com/oxc-project/oxc-yaml-parser/pull/41))
+
 ## [0.0.6](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.5...oxc-yaml-parser-v0.0.6) - 2026-09-09
 
 ### Fixed
