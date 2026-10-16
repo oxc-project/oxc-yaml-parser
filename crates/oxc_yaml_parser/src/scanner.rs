@@ -188,9 +188,14 @@ fn is_break(b: u8) -> bool {
     b == b'\n' || b == b'\r'
 }
 
-/// Break or end-of-input (we use NUL as the EOF sentinel like libyaml).
+/// The byte `peek` returns past the end.
+/// libyaml uses NUL, which is content here;
+/// 0xFF never occurs in UTF-8, and `src` is the bytes of a `&str`.
+const EOF: u8 = 0xFF;
+
+/// Break or end-of-input.
 fn is_breakz(b: u8) -> bool {
-    is_break(b) || b == 0
+    is_break(b) || b == EOF
 }
 
 fn is_blank_or_breakz(b: u8) -> bool {
@@ -264,6 +269,9 @@ pub struct Scanner<'a> {
     leading_whitespace: bool,
     flow_mapping_started: bool,
     implicit_flow_mapping_states: Vec<ImplicitMappingState>,
+    /// Whether a document has started (`---` or content) and not yet ended (`...`).
+    /// A BOM is only skipped outside a document; inside one it is content.
+    in_document: bool,
 }
 
 impl<'a> Scanner<'a> {
@@ -288,26 +296,22 @@ impl<'a> Scanner<'a> {
             leading_whitespace: true,
             flow_mapping_started: false,
             implicit_flow_mapping_states: Vec::new(),
+            in_document: false,
         }
     }
 
     // ---------------------------------------------------------------- cursor
 
     fn peek(&self) -> u8 {
-        self.src.get(self.pos).copied().unwrap_or(0)
+        self.src.get(self.pos).copied().unwrap_or(EOF)
     }
 
     fn peek_nth(&self, n: usize) -> u8 {
-        self.src.get(self.pos + n).copied().unwrap_or(0)
+        self.src.get(self.pos + n).copied().unwrap_or(EOF)
     }
 
     fn is_eof(&self) -> bool {
         self.pos >= self.src.len()
-    }
-
-    /// End of input, or a NUL byte (libyaml's EOF sentinel).
-    fn next_is_z(&self) -> bool {
-        self.peek() == 0
     }
 
     /// Consume one character (possibly multi-byte). Must not be a line break.
@@ -453,7 +457,7 @@ impl<'a> Scanner<'a> {
                 b'\t' => self.bump_blank(),
                 b'\n' | b'\r' => self.bump_break_in_stream(),
                 b'#' => self.eat_comment(),
-                0xEF if self.next_is_bom() => self.bump_bom(),
+                0xEF if !self.in_document && self.next_is_bom() => self.bump_bom(),
                 _ => break,
             }
         }
@@ -559,7 +563,7 @@ impl<'a> Scanner<'a> {
 
         self.unroll_indent(self.col.cast_signed());
 
-        if self.next_is_z() {
+        if self.is_eof() {
             self.fetch_stream_end()?;
             return Ok(());
         }
@@ -568,8 +572,10 @@ impl<'a> Scanner<'a> {
             if self.peek() == b'%' {
                 return self.fetch_directive();
             } else if self.next_is_document_start() {
+                self.in_document = true;
                 return self.fetch_document_indicator(TokenKind::DocumentStart);
             } else if self.next_is_document_end() {
+                self.in_document = false;
                 self.fetch_document_indicator(TokenKind::DocumentEnd)?;
                 self.skip_ws_to_eol(true)?;
                 if !is_breakz(self.peek()) {
@@ -583,6 +589,7 @@ impl<'a> Scanner<'a> {
             return Err(self.error(ErrorKind::UnexpectedIndicator, self.pos));
         }
 
+        self.in_document = true;
         let c = self.peek();
         let nc = self.peek_nth(1);
         match c {
@@ -1055,7 +1062,7 @@ impl<'a> Scanner<'a> {
         // with no next token to own them they are part of the token's lexical extent,
         // and consumers decide what a break-less space-only last line means for the value
         // (implementations disagree: "" per the `libyaml` family, "\n" per `yaml@2`).
-        if self.next_is_z() {
+        if self.is_eof() {
             return Ok(Token::new(
                 TokenKind::Scalar(style, Some(header_index)),
                 span(start, self.pos),
@@ -1076,7 +1083,7 @@ impl<'a> Scanner<'a> {
         // Offset right after the last content character
         // (the loop only enters at lines that carry content, so every iteration advances it).
         let mut text_end = content_start;
-        while self.col == indent && !(self.next_is_z()) {
+        while self.col == indent && !self.is_eof() {
             if indent == 0 && self.next_is_document_indicator() {
                 break;
             }
@@ -1085,7 +1092,7 @@ impl<'a> Scanner<'a> {
             self.bump_while(|b| !is_breakz(b));
             text_end = self.pos;
 
-            if self.next_is_z() {
+            if self.is_eof() {
                 content_end = self.pos;
                 break;
             }
@@ -1211,7 +1218,7 @@ impl<'a> Scanner<'a> {
             if self.col == 0 && self.next_is_document_indicator() {
                 return Err(self.error(ErrorKind::UnterminatedFlowScalar, start));
             }
-            if self.next_is_z() {
+            if self.is_eof() {
                 return Err(self.error(ErrorKind::UnterminatedFlowScalar, start));
             }
             if self.col.cast_signed() < self.indent {
@@ -1361,8 +1368,7 @@ impl<'a> Scanner<'a> {
         let mut consumed_content = false;
 
         loop {
-            if (self.leading_whitespace && self.next_is_document_indicator()) || self.peek() == b'#'
-            {
+            if (self.col == 0 && self.next_is_document_indicator()) || self.peek() == b'#' {
                 break;
             }
 
@@ -1379,7 +1385,7 @@ impl<'a> Scanner<'a> {
                 let run_start = self.pos;
                 let mut i = self.pos;
                 while let Some(&b) = self.src.get(i) {
-                    let next = self.src.get(i + 1).copied().unwrap_or(0);
+                    let next = self.src.get(i + 1).copied().unwrap_or(EOF);
                     if is_blank_or_breakz(b) || ends_plain_scalar(b, next, in_flow) {
                         break;
                     }

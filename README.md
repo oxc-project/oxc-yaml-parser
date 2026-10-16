@@ -10,6 +10,15 @@
 
 The scanner is a port of the libyaml scanning algorithm (by way of [saphyr](https://github.com/saphyr-rs/saphyr)), adapted to byte-offset spans and trivia retention.
 
+## Input acceptance
+
+The reference is what [yaml@2](https://github.com/eemeli/yaml) (Prettier's YAML parser) accepts, and how it reads it.
+
+- A NUL is an ordinary character, as in yaml@2 (libyaml rejects it as a control character)
+- Stream-level syntax is recognized only where yaml@2 and libyaml agree it can appear
+  - `---`/`...` is a document marker only at column 0; indented, it continues a plain scalar
+  - A BOM is skipped only outside a document (the stream start, after `...`); inside one it is content (libyaml skips it at any line start)
+
 ## Example
 
 ```rust
