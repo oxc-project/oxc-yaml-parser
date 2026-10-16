@@ -434,3 +434,68 @@ fn double_quoted_surrogate_escapes_are_accepted() {
     // Beyond the Unicode range is still invalid.
     assert!(Parser::new(&allocator, r#""\U00110000""#).parse().is_err());
 }
+
+#[test]
+fn nul_is_content() {
+    // Like yaml@2, a NUL is an ordinary character (libyaml's EOF sentinel would drop the rest).
+    let allocator = Allocator::default();
+    for (source, value) in [
+        ("a: b\0c", "b\0c"),
+        ("a: |\n  b\0c\n", "|\n  b\0c\n"),
+        ("a: \"b\0c\"", "\"b\0c\""),
+        ("a: 'b\0c'", "'b\0c'"),
+    ] {
+        let root = parse(&allocator, source);
+        let Content::Mapping(mapping) = &body(&root).content else {
+            panic!("expected mapping");
+        };
+        assert_eq!(value_node(&mapping.children[0]).span.slice(source), value, "{source:?}");
+    }
+
+    let source = "# c\0d\n\0a: 1\n";
+    let root = parse(&allocator, source);
+    assert_eq!(root.comments[0].span.slice(source), "# c\0d");
+    let Content::Mapping(mapping) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    assert_eq!(mapping.children[0].key_content().unwrap().span.slice(source), "\0a");
+}
+
+#[test]
+fn bom_is_content_inside_a_document() {
+    // Like yaml@2, a BOM is skipped only outside a document (before it, or after `...`).
+    let allocator = Allocator::default();
+    let key = |source| {
+        let root = parse(&allocator, source);
+        let Content::Mapping(mapping) = &body(&root).content else {
+            panic!("expected mapping");
+        };
+        mapping.children[0].key_content().unwrap().span.slice(source).to_string()
+    };
+    assert_eq!(key("\u{FEFF}a: 1"), "a");
+    assert_eq!(key("\u{FEFF}# c\n\u{FEFF}a: 1"), "a");
+    assert_eq!(key("? \u{FEFF}a\n: m"), "\u{FEFF}a");
+    assert_eq!(key("---\n\u{FEFF}a: 1"), "\u{FEFF}a");
+    assert_eq!(key("a:\n  \u{FEFF}b: 1"), "a");
+
+    let root = parse(&allocator, "a: 1\n...\n\u{FEFF}---\nb: 2\n");
+    assert_eq!(root.children.len(), 2);
+}
+
+#[test]
+fn document_indicator_only_at_column_zero_ends_a_plain_scalar() {
+    // Like libyaml, `---`/`...` is a marker only at column 0; indented, it continues the scalar.
+    let allocator = Allocator::default();
+    for (source, scalar) in [
+        ("aaaa\n  --- x\n", "aaaa\n  --- x"),
+        ("- aaaa\n  ... x\n", "aaaa\n  ... x"),
+        ("---\n  --- x\n", "--- x"),
+    ] {
+        let root = parse(&allocator, source);
+        let node = match &body(&root).content {
+            Content::Sequence(sequence) => sequence.children[0].content.as_deref().unwrap(),
+            _ => body(&root),
+        };
+        assert_eq!(node.span.slice(source), scalar, "{source:?}");
+    }
+}
