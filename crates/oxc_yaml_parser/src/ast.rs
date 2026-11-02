@@ -157,18 +157,24 @@ impl Content<'_> {
 #[derive(Debug)]
 pub struct Plain {
     pub span: Span,
+    /// `true` when `span` crosses a line break.
+    pub multiline: bool,
 }
 
 /// `'...'`. `span` includes the quotes.
 #[derive(Debug)]
 pub struct QuoteSingle {
     pub span: Span,
+    /// `true` when `span` crosses a line break.
+    pub multiline: bool,
 }
 
 /// `"..."`. `span` includes the quotes.
 #[derive(Debug)]
 pub struct QuoteDouble {
     pub span: Span,
+    /// `true` when `span` crosses a line break.
+    pub multiline: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
