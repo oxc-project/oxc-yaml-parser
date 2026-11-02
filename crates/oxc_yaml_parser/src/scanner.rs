@@ -125,16 +125,19 @@ pub struct Token {
     /// `true` for tokens the scanner invents (block/flow structure markers,
     /// retroactively inserted `Key`s, ...) rather than reads from the source.
     pub synthesized: bool,
+    /// Whether a flow scalar (plain / quoted) token spans more than one line.
+    /// `false` for every other token.
+    pub multiline: bool,
 }
 
 impl Token {
     fn new(kind: TokenKind, span: Span) -> Self {
-        Self { kind, span, synthesized: false }
+        Self { kind, span, synthesized: false, multiline: false }
     }
 
     /// A zero-width token invented by the scanner at the given offset.
     fn synthesized(kind: TokenKind, at: usize) -> Self {
-        Self { kind, span: span(at, at), synthesized: true }
+        Self { kind, span: span(at, at), synthesized: true, multiline: false }
     }
 }
 
@@ -1283,6 +1286,7 @@ impl<'a> Scanner<'a> {
         // Eat the right quote.
         self.bump();
         let token_end = self.pos;
+        let multiline = self.line != start_line;
         // Ensure there is no invalid trailing content.
         self.skip_ws_to_eol(true)?;
         match self.peek() {
@@ -1292,7 +1296,7 @@ impl<'a> Scanner<'a> {
             c if is_breakz(c) => {}
             // `:` can be encountered if our scalar is a key. Outside of flow
             // contexts, keys cannot span multiple lines.
-            b':' if self.flow_level > 0 || self.line == start_line => {}
+            b':' if self.flow_level > 0 || !multiline => {}
             _ => {
                 return Err(
                     self.error(ErrorKind::UnexpectedToken("content after quoted scalar"), self.pos)
@@ -1301,7 +1305,10 @@ impl<'a> Scanner<'a> {
         }
 
         let style = if single { ScalarStyle::SingleQuoted } else { ScalarStyle::DoubleQuoted };
-        Ok(Token::new(TokenKind::Scalar(style, None), span(start, token_end)))
+        Ok(Token {
+            multiline,
+            ..Token::new(TokenKind::Scalar(style, None), span(start, token_end))
+        })
     }
 
     /// Validate an escape sequence in a double quoted scalar. The cursor must
@@ -1364,7 +1371,10 @@ impl<'a> Scanner<'a> {
             return Err(self.error(ErrorKind::UnexpectedIndicator, start));
         }
 
+        let start_line = self.line;
         let mut end = self.pos;
+        // Updated per content run: breaks after the last run are outside the span.
+        let mut multiline = false;
         let mut consumed_content = false;
 
         loop {
@@ -1396,6 +1406,7 @@ impl<'a> Scanner<'a> {
                     self.pos = i;
                 }
                 end = self.pos;
+                multiline = self.line != start_line;
                 consumed_content = true;
             }
 
@@ -1436,7 +1447,10 @@ impl<'a> Scanner<'a> {
         }
 
         if consumed_content {
-            Ok(Token::new(TokenKind::Scalar(ScalarStyle::Plain, None), span(start, end)))
+            Ok(Token {
+                multiline,
+                ..Token::new(TokenKind::Scalar(ScalarStyle::Plain, None), span(start, end))
+            })
         } else {
             // `fetch_plain_scalar` must absolutely consume at least one byte;
             // an empty plain scalar happens with erroneous inputs like `{...`.

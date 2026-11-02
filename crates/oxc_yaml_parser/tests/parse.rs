@@ -67,6 +67,36 @@ fn multiline_plain_scalar_span() {
 }
 
 #[test]
+fn flow_scalar_multiline() {
+    let cases = [
+        ("one", false),
+        ("one\n  two", true),
+        // Trailing breaks, blank lines and comments are outside the span
+        ("one\n\n# c\n", false),
+        ("one\n...\n", false),
+        ("one\r\ntwo", true),
+        ("one\rtwo", true),
+        ("'a'  # c\n", false),
+        ("'a\n  b'", true),
+        ("\"a\"\n", false),
+        ("\"a\\\n  b\"", true),
+        // Properties without content: a synthesized empty plain scalar
+        ("!!str", false),
+    ];
+    for (source, expected) in cases {
+        let allocator = Allocator::default();
+        let root = parse(&allocator, source);
+        let multiline = match &body(&root).content {
+            Content::Plain(n) => n.multiline,
+            Content::QuoteSingle(n) => n.multiline,
+            Content::QuoteDouble(n) => n.multiline,
+            _ => panic!("expected flow scalar: {source:?}"),
+        };
+        assert_eq!(multiline, expected, "{source:?}");
+    }
+}
+
+#[test]
 fn mapping_value_span_starts_at_colon() {
     let allocator = Allocator::default();
     let source = "key: value\nempty:\n";

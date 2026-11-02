@@ -224,7 +224,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Scalar(style, header_index) => {
                 self.next()?;
-                Ok(self.build_scalar(style, header_index, token.span))
+                Ok(self.build_scalar(style, header_index, token.span, token.multiline))
             }
             TokenKind::FlowSequenceStart => self.parse_flow_sequence(),
             TokenKind::FlowMappingStart => self.parse_flow_mapping(),
@@ -244,7 +244,9 @@ impl<'a> Parser<'a> {
                         .map(|a| a.span.end)
                         .max(props.tag.map(|t| t.span.end))
                         .unwrap();
-                    return Ok(Content::Plain(self.alloc(Plain { span: Span::empty(at) })));
+                    return Ok(Content::Plain(
+                        self.alloc(Plain { span: Span::empty(at), multiline: false }),
+                    ));
                 }
                 Err(Error::new(ErrorKind::ExpectedNode, token.span))
             }
@@ -256,11 +258,16 @@ impl<'a> Parser<'a> {
         style: ScalarStyle,
         header_index: Option<crate::scanner::BlockHeaderIndex>,
         span: Span,
+        multiline: bool,
     ) -> Content<'a> {
         match style {
-            ScalarStyle::Plain => Content::Plain(self.alloc(Plain { span })),
-            ScalarStyle::SingleQuoted => Content::QuoteSingle(self.alloc(QuoteSingle { span })),
-            ScalarStyle::DoubleQuoted => Content::QuoteDouble(self.alloc(QuoteDouble { span })),
+            ScalarStyle::Plain => Content::Plain(self.alloc(Plain { span, multiline })),
+            ScalarStyle::SingleQuoted => {
+                Content::QuoteSingle(self.alloc(QuoteSingle { span, multiline }))
+            }
+            ScalarStyle::DoubleQuoted => {
+                Content::QuoteDouble(self.alloc(QuoteDouble { span, multiline }))
+            }
             ScalarStyle::Literal | ScalarStyle::Folded => {
                 let index = header_index.expect("block scalar token must carry a header index");
                 let header = self.scanner.block_headers[index.get()];
