@@ -87,12 +87,12 @@ const SUITES: &[Suite] = &[
     Suite {
         name: "prettier",
         url: "https://github.com/prettier/prettier.git",
-        sha: "cf7db3500a89faeb24ad0af45c6b9a0e7b074a03",
+        sha: "b688380af847b008d9951d794b2990a59048922f",
         sparse: &["tests/format/yaml"],
         walk: "tests/format/yaml",
         input_filename: None,
         invalid_rule: InvalidRule::PathComponent("_errors_"),
-        note: "Prettier's YAML fixtures (3.9-era, yaml@2 parser); _errors_ are expected-invalid",
+        note: "Prettier's YAML fixtures (3.10.0, yaml@2 parser); _errors_ are expected-invalid",
     },
     Suite {
         name: "edge",

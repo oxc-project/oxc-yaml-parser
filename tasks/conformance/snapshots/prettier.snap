@@ -1,6 +1,6 @@
 suite: prettier
-sha: cf7db3500a89faeb24ad0af45c6b9a0e7b074a03
-files: 361   success: 360   failed: 0   rejected: 1   accepted: 0
+sha: b688380af847b008d9951d794b2990a59048922f
+files: 367   success: 366   failed: 0   rejected: 1   accepted: 0
 
 failures:
 none
