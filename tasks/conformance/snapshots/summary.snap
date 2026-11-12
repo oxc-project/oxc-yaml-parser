@@ -4,7 +4,7 @@
 
 suite               files  success  failed  panic  rejected  accepted inv_panic
 yaml-test-suite       402      308       0      0        82        12         0
-prettier              361      360       0      0         1         0         0
+prettier              367      366       0      0         1         0         0
 edge                   19       19       0      0         0         0         0
 ------------------------------------------------------------------------------------
-total                 782      687       0      0        83        12         0
+total                 788      693       0      0        83        12         0
