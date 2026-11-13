@@ -18,5 +18,4 @@ path = "src/main.rs"
 [dependencies]
 oxc-yaml-parser = { path = "../../crates/oxc_yaml_parser" }
 
-# Opt out of `[workspace.lints]` until its warnings are fixed.
 [lints]
