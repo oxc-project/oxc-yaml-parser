@@ -36,6 +36,6 @@ The reference is what [yaml@2](https://github.com/eemeli/yaml) (Prettier's YAML 
 | `just conformance [suite]...` | yaml-test-suite (`data` branch), Prettier's YAML format fixtures, local edge fixtures; fetches the suites itself, snapshot-pinned |
 | `cargo bench` | parse speed over `benchmark/fixtures` (or a local `bench_data` directory) |
 
-CI (`.github/workflows`) runs check, test, clippy, doc and typos, and fails when the conformance snapshots are stale.
+CI (`.github/workflows`) runs check, test, clippy and doc, and fails when the conformance snapshots are stale.
 
 - What the conformance columns mean, how suites are pinned and what a filtered run rewrites: the header of `tasks/conformance/src/main.rs`.
