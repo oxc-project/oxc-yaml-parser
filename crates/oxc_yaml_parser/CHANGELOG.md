@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.9](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.8...oxc-yaml-parser-v0.0.9) - 2026-11-25
+
+### Added
+
+- *(parser)* record the content indentation of block scalars ([#57](https://github.com/oxc-project/oxc-yaml-parser/pull/57))
+
 ## [0.0.8](https://github.com/oxc-project/oxc-yaml-parser/compare/oxc-yaml-parser-v0.0.7...oxc-yaml-parser-v0.0.8) - 2026-11-02
 
 ### Added
