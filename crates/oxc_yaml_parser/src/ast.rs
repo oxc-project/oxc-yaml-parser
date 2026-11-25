@@ -207,6 +207,10 @@ pub struct BlockScalar {
     pub chomping: Chomping,
     /// Explicit indentation indicator digit, if any.
     pub indent: Option<u32>,
+    /// Column the content lines are indented to (YAML's `n + m`):
+    /// the indicator added to the parent's indentation (from column 0 at the root, as yaml@2 and libyaml),
+    /// or without one, detected from the first content line.
+    pub content_indent: u32,
     /// Offset right after the header line's line break (= where content
     /// scanning began). The content text is `content_start..content_end`.
     pub content_start: u32,
