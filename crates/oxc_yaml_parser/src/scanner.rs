@@ -58,6 +58,8 @@ pub struct BlockScalarHeader {
     pub chomping: Chomping,
     /// Explicit indentation indicator digit, if any.
     pub indent: Option<u32>,
+    /// See [`crate::ast::BlockScalar::content_indent`].
+    pub content_indent: u32,
     /// Offset right after the header line's line break.
     pub content_start: u32,
     /// Offset right after the last content character (before the trailing break run).
@@ -1054,6 +1056,7 @@ impl<'a> Scanner<'a> {
         self.block_headers.push(BlockScalarHeader {
             chomping,
             indent: if increment > 0 { Some(increment as u32) } else { None },
+            content_indent: indent as u32,
             content_start: content_start as u32,
             // Placeholder for the no-content early return below;
             // the content loop overwrites it with the real text end.

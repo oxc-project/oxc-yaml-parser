@@ -178,6 +178,8 @@ fn block_scalar_span_excludes_next_entry_indent() {
     assert_eq!(Span::new(block.content_start, block.span.end).slice(source), "    text\n\n");
     // `content_end` stops right after the last content character.
     assert_eq!(Span::new(block.content_start, block.content_end).slice(source), "    text");
+    // Without an indicator, the indent is detected from the first content line
+    assert_eq!(block.content_indent, 4);
 }
 
 #[test]
@@ -263,6 +265,29 @@ fn block_scalar_without_content() {
         panic!("expected block literal");
     };
     assert_eq!(block.content_start, block.content_end);
+}
+
+#[test]
+fn block_scalar_content_indent() {
+    // An indentation indicator counts from the parent's indentation (from column 0 at the root)
+    let allocator = Allocator::default();
+    let root = parse(&allocator, "a:\n    b: |2\n          x\n");
+    let Content::Mapping(outer) = &body(&root).content else {
+        panic!("expected mapping");
+    };
+    let Content::Mapping(inner) = &value_node(&outer.children[0]).content else {
+        panic!("expected nested mapping");
+    };
+    let Content::BlockLiteral(block) = &value_node(&inner.children[0]).content else {
+        panic!("expected block literal");
+    };
+    assert_eq!(block.content_indent, 6);
+
+    let root = parse(&allocator, "--- |2\n  x\n");
+    let Content::BlockLiteral(block) = &body(&root).content else {
+        panic!("expected block literal");
+    };
+    assert_eq!(block.content_indent, 2);
 }
 
 #[test]

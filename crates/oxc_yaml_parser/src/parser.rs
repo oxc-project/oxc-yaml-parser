@@ -275,6 +275,7 @@ impl<'a> Parser<'a> {
                     span,
                     chomping: header.chomping,
                     indent: header.indent,
+                    content_indent: header.content_indent,
                     content_start: header.content_start,
                     content_end: header.content_end,
                 };
